@@ -21,6 +21,8 @@ app.use(cors({
           'http://localhost:3000',
           'http://10.0.3.111:3000',
           'https://pemira-sttnf.vercel.app',
+          'https://pemira.nurulfikri.ac.id',
+          'https://pemira.oktaa.my.id',
           process.env.FRONTEND_URL || ''
      ].filter(Boolean),
      credentials: true

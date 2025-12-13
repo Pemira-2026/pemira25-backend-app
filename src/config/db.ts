@@ -14,6 +14,9 @@ const poolConfig = process.env.DATABASE_URL
           database: process.env.DB_NAME || 'pemira_db',
           password: process.env.DB_PASSWORD || 'postgres',
           port: parseInt(process.env.DB_PORT || '5432'),
+          max: 20, // Max clients in the pool
+          idleTimeoutMillis: 30000, // Close idle clients after 30 seconds
+          connectionTimeoutMillis: 2000, // Return an error after 2 seconds if connection could not be established
      };
 
 const pool = new Pool(poolConfig);

@@ -11,11 +11,17 @@ const JWT_SECRET = process.env.JWT_SECRET || 'super_secret_key_change_me';
 
 // Zod Schemas
 const RequestOtpSchema = z.object({
-     email: z.string().email("Invalid email format")
+     email: z.string().email("Invalid email format").refine(
+          (email) => email.endsWith("@student.nurulfikri.ac.id"),
+          "Email harus menggunakan domain @student.nurulfikri.ac.id"
+     )
 });
 
 const VerifyOtpSchema = z.object({
-     email: z.string().email("Invalid email format"),
+     email: z.string().email("Invalid email format").refine(
+          (email) => email.endsWith("@student.nurulfikri.ac.id"),
+          "Email harus menggunakan domain @student.nurulfikri.ac.id"
+     ),
      otp: z.string().regex(/^\d{6}$/, "OTP must be 6 digits")
 });
 

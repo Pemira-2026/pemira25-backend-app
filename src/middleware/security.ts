@@ -7,7 +7,7 @@ export const configureSecurity = (app: Express) => {
 
      const limiter = rateLimit({
           windowMs: 15 * 60 * 1000, // 15 minutes
-          limit: 100, // Limit each IP to 100 requests per `window` (here, per 15 minutes)
+          limit: 1000, // Increased limit for high concurrency
           standardHeaders: true,
           legacyHeaders: false,
           message: 'Too many requests from this IP, please try again after 15 minutes',

@@ -5,6 +5,10 @@ import { eq, sql } from 'drizzle-orm';
 import { AuthRequest } from '../middleware/authMiddleware';
 import { Request } from 'express';
 
+import NodeCache from 'node-cache';
+
+const cache = new NodeCache({ stdTTL: 30 }); // 30 seconds cache
+
 export const vote = async (req: AuthRequest, res: Response) => {
      const { candidateId } = req.body;
      const userId = req.user.id;
@@ -32,6 +36,11 @@ export const vote = async (req: AuthRequest, res: Response) => {
                await tx.update(users).set({ hasVoted: true }).where(eq(users.id, userId));
           });
 
+          // Invalidate cache immediately after a vote (optional, but good for accuracy)
+          // or just let it expire. Let's expire it to show real-time progress better.
+          cache.del("stats");
+          cache.del("results");
+
           res.json({ message: 'Vote cast successfully' });
      } catch (error: any) {
           console.error('Vote error:', error);
@@ -54,6 +63,9 @@ export const getVoteStatus = async (req: AuthRequest, res: Response) => {
 
 export const getStats = async (req: Request, res: Response) => {
      try {
+          const cached = cache.get("stats");
+          if (cached) return res.json(cached);
+
           const userCount = await db.select({ count: sql<number>`count(*)` }).from(users);
           const voteCount = await db.select({ count: sql<number>`count(*)` }).from(votes);
 
@@ -61,11 +73,14 @@ export const getStats = async (req: Request, res: Response) => {
           const votesCast = Number(voteCount[0].count);
           const turnout = totalVoters > 0 ? ((votesCast / totalVoters) * 100).toFixed(2) + "%" : "0%";
 
-          res.json({
+          const data = {
                totalVoters,
                votesCast,
                turnout
-          });
+          };
+
+          cache.set("stats", data);
+          res.json(data);
      } catch (error) {
           console.error("Stats Error", error);
           res.status(500).json({ message: 'Error fetching stats' });
@@ -74,6 +89,9 @@ export const getStats = async (req: Request, res: Response) => {
 
 export const getResults = async (req: Request, res: Response) => {
      try {
+          const cached = cache.get("results");
+          if (cached) return res.json(cached);
+
           // Group by candidate and count
           const results = await db.select({
                candidateId: votes.candidateId,
@@ -94,6 +112,7 @@ export const getResults = async (req: Request, res: Response) => {
                };
           });
 
+          cache.set("results", finalResults);
           res.json(finalResults);
      } catch (error) {
           console.error("Results Error", error);
