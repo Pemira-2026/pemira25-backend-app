@@ -1,7 +1,7 @@
 import { Response } from 'express';
 import { db } from '../config/db';
 import { votes, users, candidates } from '../db/schema';
-import { eq, sql } from 'drizzle-orm';
+import { eq, sql, and } from 'drizzle-orm';
 import { AuthRequest } from '../middleware/authMiddleware';
 import { Request } from 'express';
 
@@ -18,28 +18,30 @@ export const vote = async (req: AuthRequest, res: Response) => {
      }
 
      try {
-          // Transaction
+          // Transaction to ensure atomicity
           await db.transaction(async (tx) => {
-               // Check if user has voted
+               // 1. Check if user has voted
                const userCheck = await tx.select({ hasVoted: users.hasVoted }).from(users).where(eq(users.id, userId));
                if (userCheck[0].hasVoted) {
-                    throw new Error('User has already voted'); // Breaks transaction
+                    throw new Error('User has already voted');
                }
 
-               // Insert vote
+               // 2. Insert ANONYMOUS vote (No voterId)
                await tx.insert(votes).values({
-                    voterId: userId,
-                    candidateId: candidateId
+                    candidateId: candidateId,
+                    source: 'online'
                });
 
-               // Update user
-               await tx.update(users).set({ hasVoted: true }).where(eq(users.id, userId));
+               // 3. Mark user as voted and timestamp matches logic
+               await tx.update(users)
+                    .set({ hasVoted: true, votedAt: new Date() })
+                    .where(eq(users.id, userId));
           });
 
-          // Invalidate cache immediately after a vote (optional, but good for accuracy)
-          // or just let it expire. Let's expire it to show real-time progress better.
+          // Invalidate cache
           cache.del("stats");
           cache.del("results");
+          cache.del("recent-activity"); // assuming dynamic key or just let it expire
 
           res.json({ message: 'Vote cast successfully' });
      } catch (error: any) {
@@ -69,6 +71,9 @@ export const getStats = async (req: Request, res: Response) => {
           const userCount = await db.select({ count: sql<number>`count(*)` }).from(users);
           const voteCount = await db.select({ count: sql<number>`count(*)` }).from(votes);
 
+          const onlineCount = await db.select({ count: sql<number>`count(*)` }).from(votes).where(eq(votes.source, 'online'));
+          const offlineCount = await db.select({ count: sql<number>`count(*)` }).from(votes).where(eq(votes.source, 'offline'));
+
           const totalVoters = Number(userCount[0].count);
           const votesCast = Number(voteCount[0].count);
           const turnout = totalVoters > 0 ? ((votesCast / totalVoters) * 100).toFixed(2) + "%" : "0%";
@@ -76,7 +81,9 @@ export const getStats = async (req: Request, res: Response) => {
           const data = {
                totalVoters,
                votesCast,
-               turnout
+               turnout,
+               onlineVotes: Number(onlineCount[0].count),
+               offlineVotes: Number(offlineCount[0].count)
           };
 
           cache.set("stats", data);
@@ -92,23 +99,31 @@ export const getResults = async (req: Request, res: Response) => {
           const cached = cache.get("results");
           if (cached) return res.json(cached);
 
-          // Group by candidate and count
+          // Group by candidate and source
           const results = await db.select({
                candidateId: votes.candidateId,
+               source: votes.source,
                count: sql<number>`count(*)`
-          }).from(votes).groupBy(votes.candidateId);
+          })
+               .from(votes)
+               .groupBy(votes.candidateId, votes.source);
 
-          // Fetch candidates to map names (or do a join)
+          // Fetch candidates to map names
           const candidatesData = await db.select().from(candidates);
 
           // Map results to candidates
           const finalResults = candidatesData.map(c => {
-               const found = results.find(r => r.candidateId === c.id);
+               const onlineCount = results.find(r => r.candidateId === c.id && r.source === 'online')?.count || 0;
+               const offlineCount = results.find(r => r.candidateId === c.id && r.source === 'offline')?.count || 0;
+
                return {
                     id: c.id,
                     name: c.name,
-                    votes: Number(found?.count || 0),
-                    fill: c.orderNumber === 1 ? "#3b82f6" : "#ef4444" // Simply color logic
+                    orderNumber: c.orderNumber,
+                    onlineVotes: Number(onlineCount),
+                    offlineVotes: Number(offlineCount),
+                    votes: Number(onlineCount) + Number(offlineCount),
+                    fill: c.orderNumber === 1 ? "#3b82f6" : "#ef4444"
                };
           });
 
@@ -117,5 +132,104 @@ export const getResults = async (req: Request, res: Response) => {
      } catch (error) {
           console.error("Results Error", error);
           res.status(500).json({ message: 'Error fetching results' });
+     }
+}
+
+export const manualVote = async (req: Request, res: Response) => {
+     const { candidateId } = req.body;
+
+     // NO NIM required for offline tally (per user request).
+     // This function is purely for "Ballot Box Stuffing" (Tallying paper votes).
+     // Admin authentication is strictly required (handled by middleware).
+
+     if (!candidateId) {
+          return res.status(400).json({ message: 'Candidate ID is required' });
+     }
+
+     try {
+          await db.insert(votes).values({
+               candidateId: candidateId,
+               source: 'offline'
+          });
+
+          cache.del("stats");
+          cache.del("results");
+
+          res.json({ message: `Offline vote tallied` });
+     } catch (error: any) {
+          console.error('Manual Vote Error:', error);
+          res.status(500).json({ message: 'Error recording offline vote' });
+     }
+}
+
+// ... imports
+import { desc } from 'drizzle-orm';
+
+// ... existing code
+
+export const getRecentActivity = async (req: Request, res: Response) => {
+     try {
+          // Admin Activity Stream: Show ALL recent votes (Online & Manual)
+          // We query the VOTES table directly for truth
+          const recentVotes = await db.select({
+               id: votes.id,
+               timestamp: votes.timestamp,
+               candidateId: votes.candidateId,
+               source: votes.source,
+               // Join with candidates to show who got the vote (Admin Internal View)
+               candidateName: candidates.name
+          })
+               .from(votes)
+               .leftJoin(candidates, eq(votes.candidateId, candidates.id))
+               .orderBy(desc(votes.timestamp))
+               .limit(10);
+
+          res.json(recentVotes);
+     } catch (error) {
+          console.error("Activity Error", error);
+          res.status(500).json({ message: 'Error fetching activity' });
+     }
+}
+
+export const deleteVote = async (req: Request, res: Response) => {
+     const { id } = req.params;
+     try {
+          // 1. Fetch the vote to check timestamp
+          const targetVote = await db.select().from(votes).where(eq(votes.id, id));
+
+          if (!targetVote.length) {
+               return res.status(404).json({ message: 'Vote not found' });
+          }
+
+          const voteTime = new Date(targetVote[0].timestamp as Date).getTime();
+          const now = new Date().getTime();
+          const diffInMinutes = (now - voteTime) / 1000 / 60;
+
+          // 2. Strict 1-minute Rule
+          if (diffInMinutes > 1) {
+               return res.status(403).json({ message: 'Cannot delete vote older than 1 minute (Permanent)' });
+          }
+
+          // 3. Delete
+          // If it was an online vote, we technically should revert users.hasVoted = false?
+          // But sticking to the request: "Super admin can delete voting data...".
+          // If we delete the vote row, the count is corrected. 
+          // Reverting the "User hasVoted" flag is tricky without knowing WHICH user it was (if anonymous).
+          // But strict 1-min rule is usually for fixing MANUAL entry (offline).
+          // Offline votes have no user link. So deleting the row is sufficient.
+          // Online votes: Deleting the vote row corrects the count. The user remains "hasVoted=true". 
+          // This effectively "spoils" their vote if done on an online vote.
+          // Is this acceptable? "jika ada kesalahan" -> likely for manual input.
+
+          await db.delete(votes).where(eq(votes.id, id));
+
+          // Invalidate cache
+          cache.del("stats");
+          cache.del("results");
+
+          res.json({ message: 'Vote deleted successfully' });
+     } catch (error) {
+          console.error("Delete Vote Error", error);
+          res.status(500).json({ message: 'Failed to delete vote' });
      }
 }

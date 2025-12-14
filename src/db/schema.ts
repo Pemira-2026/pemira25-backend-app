@@ -6,9 +6,12 @@ export const users = pgTable('users', {
      nim: text('nim').unique().notNull(),
      email: text('email').unique(),
      name: text('name'),
+     password: text('password'),
      role: text('role').notNull().default('voter'), // 'admin', 'voter'
      hasVoted: boolean('has_voted').default(false),
+     votedAt: timestamp('voted_at'),
      createdAt: timestamp('created_at').defaultNow(),
+     deletedAt: timestamp('deleted_at'), // Soft Delete
 });
 
 export const candidates = pgTable('candidates', {
@@ -19,13 +22,14 @@ export const candidates = pgTable('candidates', {
      photoUrl: text('photo_url'),
      orderNumber: integer('order_number').unique().notNull(),
      createdAt: timestamp('created_at').defaultNow(),
+     deletedAt: timestamp('deleted_at'), // Soft Delete
 });
 
 export const votes = pgTable('votes', {
      id: uuid('id').defaultRandom().primaryKey(),
-     voterId: uuid('voter_id').notNull().references(() => users.id),
      candidateId: uuid('candidate_id').notNull().references(() => candidates.id),
      timestamp: timestamp('timestamp').defaultNow(),
+     source: text('source').default('online'),
 });
 
 export const otpCodes = pgTable('otp_codes', {

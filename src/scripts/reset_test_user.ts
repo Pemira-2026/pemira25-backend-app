@@ -1,3 +1,4 @@
+// npx ts-node src/scripts/reset_test_user.ts
 
 import { db } from '../config/db';
 import { users, votes } from '../db/schema';
@@ -17,9 +18,10 @@ async function resetUser() {
 
      const user = userResult[0];
 
-     // Delete vote record
-     await db.delete(votes).where(eq(votes.voterId, user.id));
-     console.log('Vote record deleted.');
+     // db.delete(votes) is not possible as votes are anonymous (no voterId column)
+     // We only reset the user's flag so they can vote again.
+     // The original vote will remain in the count.
+     console.log('Skipping vote record deletion (votes are anonymous).');
 
      // Reset hasVoted flag
      await db.update(users)

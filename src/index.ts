@@ -2,10 +2,13 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import path from 'path';
+import cookieParser from 'cookie-parser';
 import { configureSecurity } from './middleware/security';
 import authRoutes from './routes/authRoutes';
 import voteRoutes from './routes/voteRoutes';
 import candidateRoutes from './routes/candidateRoutes';
+import adminRoutes from './routes/adminRoutes';
+import studentRoutes from './routes/studentRoutes';
 import { db } from './config/db';
 import { sql } from 'drizzle-orm';
 
@@ -19,6 +22,8 @@ const PORT = process.env.PORT || 5000;
 app.use(cors({
      origin: [
           'http://localhost:3000',
+          'http://localhost:3001',
+          'http://localhost:3002',
           'http://10.0.3.111:3000',
           'https://pemira-sttnf.vercel.app',
           'https://pemira.nurulfikri.ac.id',
@@ -28,6 +33,7 @@ app.use(cors({
      credentials: true
 }));
 app.use(express.json());
+app.use(cookieParser());
 
 // Security
 configureSecurity(app);
@@ -36,6 +42,8 @@ configureSecurity(app);
 app.use('/api/auth', authRoutes);
 app.use('/api/votes', voteRoutes);
 app.use('/api/candidates', candidateRoutes);
+app.use('/api/admin', adminRoutes);
+app.use('/api/students', studentRoutes);
 
 // Health check
 app.get('/health', async (req, res) => {

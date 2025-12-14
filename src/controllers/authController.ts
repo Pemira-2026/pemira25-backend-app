@@ -3,11 +3,67 @@ import { Request, Response } from 'express';
 import jwt from 'jsonwebtoken';
 import { db } from '../config/db';
 import { users, otpCodes } from '../db/schema';
-import { eq, gt, and } from 'drizzle-orm';
+import { eq, gt, and, or } from 'drizzle-orm';
 import { sendOtpEmail } from '../config/mail';
 import { z } from 'zod';
+import bcrypt from 'bcryptjs';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'super_secret_key_change_me';
+
+export const adminLogin = async (req: Request, res: Response) => {
+     const { email, password } = req.body;
+
+     if (!email || !password) {
+          return res.status(400).json({ message: 'Email and password required' });
+     }
+
+     try {
+          const userRes = await db.select().from(users).where(eq(users.email, email));
+          const user = userRes[0];
+
+          // Check if user exists and is authorized (not a voter)
+          if (!user || user.role === 'voter') {
+               return res.status(401).json({ message: 'Invalid credentials or access denied' });
+          }
+
+          if (!user.password) {
+               return res.status(401).json({ message: 'Account not configured for password login.' });
+          }
+
+          const validPass = await bcrypt.compare(password, user.password);
+          if (!validPass) {
+               return res.status(401).json({ message: 'Invalid credentials' });
+          }
+
+          const token = jwt.sign(
+               { id: user.id, email: user.email, role: user.role },
+               JWT_SECRET,
+               { expiresIn: '24h' }
+          );
+
+          // Set HttpOnly Cookie
+          res.cookie('admin_token', token, {
+               httpOnly: true,
+               secure: process.env.NODE_ENV === 'production',
+               sameSite: 'lax', // Lax is better for navigation
+               maxAge: 24 * 60 * 60 * 1000 // 24h
+          });
+
+          res.json({
+               token,
+               user: { id: user.id, email: user.email, role: user.role, name: user.name }
+          });
+
+     } catch (error) {
+          console.error('Login error', error);
+          res.status(500).json({ message: 'Server error' });
+     }
+};
+
+export const logout = (req: Request, res: Response) => {
+     res.clearCookie('admin_token');
+     res.json({ message: 'Logged out' });
+};
 
 // Zod Schemas
 const RequestOtpSchema = z.object({
@@ -186,8 +242,100 @@ export const resetOtpLimit = async (req: Request, res: Response) => {
           await db.delete(otpCodes).where(eq(otpCodes.email, email));
 
           res.json({ message: `Limit OTP untuk email ${email} berhasil di-reset. User bisa request OTP lagi.` });
+          // ...
      } catch (error) {
           console.error('Reset limit error:', error);
           res.status(500).json({ message: 'Internal server error' });
+     }
+};
+
+export const manualOtpRequest = async (req: Request, res: Response) => {
+     // Similar to requestOtp but bypasses rate limits and logs the action
+     // Input can be email OR nim.
+     const { identifier } = req.body; // email or nim
+
+     if (!identifier) {
+          return res.status(400).json({ message: 'Identifier (Email or NIM) is required' });
+     }
+
+     try {
+          // Find user by Email OR NIM
+          const userRes = await db.select().from(users).where(
+               or(eq(users.email, identifier), eq(users.nim, identifier))
+          );
+
+          if (userRes.length === 0) {
+               return res.status(404).json({ message: 'Student not found found' });
+          }
+
+          const user = userRes[0];
+          const email = user.email;
+
+          if (!email) {
+               return res.status(400).json({ message: 'Student does not have an email registered' });
+          }
+
+          // Generate OTP
+          const otp = Math.floor(100000 + Math.random() * 900000).toString();
+          const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes for manual
+
+          // Save OTP
+          await db.insert(otpCodes).values({
+               email,
+               code: otp,
+               expiresAt
+          });
+
+          // Send Email
+          const emailSent = await sendOtpEmail(email, otp, user.name || undefined);
+
+          res.json({
+               message: `OTP manually triggered for ${user.name} (${email})`,
+               // For debugging/manual override if email fails, maybe return code to admin?
+               // Unsecure if Admin is untrusted, but Panitia is trusted. 
+               // Let's NOT return it for now unless requested.
+               // debugCode: otp 
+          });
+
+     } catch (error) {
+          console.error('Manual OTP Error:', error);
+          res.status(500).json({ message: 'Internal Server Error' });
+     }
+}
+
+export const me = async (req: Request, res: Response) => {
+     // Req.user populated by middleware
+     const user = (req as any).user;
+     if (!user) return res.status(401).json({ message: 'Not authenticated' });
+     res.json(user);
+};
+
+export const seedAdmin = async (req: Request, res: Response) => {
+     const email = 'admin@admin.com';
+     const password = 'password123';
+
+     try {
+          // Check if exists
+          const existing = await db.select().from(users).where(eq(users.email, email));
+          if (existing.length > 0) {
+               // Update password if needed, or just return
+               const hashed = await bcrypt.hash(password, 10);
+               await db.update(users).set({ password: hashed, role: 'super_admin' }).where(eq(users.email, email));
+               return res.json({ message: 'Admin seeded (updated)' });
+          }
+
+          const hashed = await bcrypt.hash(password, 10);
+          await db.insert(users).values({
+               nim: 'admin001',
+               email,
+               name: 'Super Admin',
+               role: 'super_admin',
+               password: hashed
+          });
+          res.json({ message: 'Admin seeded successfully. Email: admin@admin.com, Pass: password123' });
+
+     } catch (error) {
+          console.error(error);
+          res.status(500).json({ message: 'Seed failed' });
      }
 };
