@@ -28,6 +28,7 @@ app.use(cors({
           'https://pemira-sttnf.vercel.app',
           'https://pemira.nurulfikri.ac.id',
           'https://pemira.oktaa.my.id',
+          'https://admin-pemira-pi.vercel.app',
           process.env.FRONTEND_URL || ''
      ].filter(Boolean),
      credentials: true
