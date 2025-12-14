@@ -8,7 +8,6 @@ export interface AdminAuthRequest extends Request {
 }
 
 export const authenticateAdmin = (req: AdminAuthRequest, res: Response, next: NextFunction) => {
-     // Check Cookie First, then Header
      let token = req.cookies.admin_token;
 
      if (!token) {

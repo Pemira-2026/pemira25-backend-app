@@ -44,8 +44,8 @@ export const adminLogin = async (req: Request, res: Response) => {
           // Set HttpOnly Cookie
           res.cookie('admin_token', token, {
                httpOnly: true,
-               secure: process.env.NODE_ENV === 'production',
-               sameSite: 'lax', // Lax is better for navigation
+               secure: true, // Always true for cross-site (None)
+               sameSite: 'none', // Required for cross-site (different Vercel domains)
                maxAge: 24 * 60 * 60 * 1000 // 24h
           });
 
