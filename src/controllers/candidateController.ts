@@ -4,6 +4,16 @@ import { candidates, votes, users } from '../db/schema';
 import { asc, eq, inArray, isNull } from 'drizzle-orm';
 import { logAction } from '../utils/actionLogger';
 
+// Helper to trigger frontend revalidation
+const triggerRevalidation = async () => {
+     try {
+          const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+          await fetch(`${frontendUrl}/api/revalidate?tag=candidates`, { method: 'POST' });
+     } catch (error) {
+          console.error('Failed to trigger revalidation:', error);
+     }
+}
+
 export const getCandidates = async (req: Request, res: Response) => {
      try {
           const { includeDeleted } = req.query;
@@ -36,6 +46,7 @@ export const createCandidate = async (req: Request, res: Response) => {
           });
           res.status(201).json({ message: 'Candidate created successfully' });
           await logAction(req, 'CREATE_CANDIDATE', `Name: ${name}, Order: ${orderNumber}`);
+          triggerRevalidation();
      } catch (error) {
           console.error('Create candidate error:', error);
           res.status(500).json({ message: 'Failed to create candidate' });
@@ -52,6 +63,7 @@ export const updateCandidate = async (req: Request, res: Response) => {
                .where(eq(candidates.id, id));
           res.json({ message: 'Candidate updated successfully' });
           await logAction(req, 'UPDATE_CANDIDATE', `ID: ${id}, Name: ${name}`);
+          triggerRevalidation();
      } catch (error) {
           console.error('Update candidate error:', error);
           res.status(500).json({ message: 'Failed to update candidate' });
@@ -68,6 +80,7 @@ export const deleteCandidate = async (req: Request, res: Response) => {
 
           res.json({ message: 'Candidate deleted (Soft)' });
           await logAction(req, 'DELETE_CANDIDATE', `ID: ${id}`);
+          triggerRevalidation();
      } catch (error) {
           console.error('Delete candidate error:', error);
           res.status(500).json({ message: 'Failed to delete candidate' });
@@ -82,6 +95,7 @@ export const restoreCandidate = async (req: Request, res: Response) => {
                .where(eq(candidates.id, id));
           res.json({ message: 'Candidate restored' });
           await logAction(req, 'RESTORE_CANDIDATE', `ID: ${id}`);
+          triggerRevalidation();
      } catch (error) {
           console.error('Restore candidate error:', error);
           res.status(500).json({ message: 'Failed to restore candidate' });
@@ -94,6 +108,7 @@ export const permanentDeleteCandidate = async (req: Request, res: Response) => {
           await db.delete(candidates).where(eq(candidates.id, id));
           res.json({ message: 'Candidate permanently deleted' });
           await logAction(req, 'PERMANENT_DELETE_CANDIDATE', `ID: ${id}`);
+          triggerRevalidation();
      } catch (error) {
           console.error('Permanent delete candidate error:', error);
           res.status(500).json({ message: 'Failed to permanently delete candidate' });
