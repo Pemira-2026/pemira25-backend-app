@@ -21,5 +21,9 @@ const poolConfig = process.env.DATABASE_URL
 
 const pool = new Pool(poolConfig);
 
+pool.on('connect', (client) => {
+     client.query("SET TIMEZONE TO 'Asia/Jakarta'");
+});
+
 export const db = drizzle(pool, { schema });
 export default pool;

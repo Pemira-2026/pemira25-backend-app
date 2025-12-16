@@ -194,34 +194,22 @@ export const getRecentActivity = async (req: Request, res: Response) => {
 export const deleteVote = async (req: Request, res: Response) => {
      const { id } = req.params;
      try {
-          // 1. Fetch the vote to check timestamp
-          const targetVote = await db.select().from(votes).where(eq(votes.id, id));
+          // DB-Side Validation: Delete only if ID matches AND it was created in the last 1 minute
+          const result = await db.execute(sql`
+               DELETE FROM votes 
+               WHERE id = ${id} 
+               AND timestamp > NOW() - INTERVAL '1 minute'
+               RETURNING id
+          `);
 
-          if (!targetVote.length) {
-               return res.status(404).json({ message: 'Vote not found' });
-          }
-
-          const voteTime = new Date(targetVote[0].timestamp as Date).getTime();
-          const now = new Date().getTime();
-          const diffInMinutes = (now - voteTime) / 1000 / 60;
-
-          // 2. Strict 1-minute Rule
-          if (diffInMinutes > 1) {
+          if (result.rowCount === 0) {
+               // Check if it exists at all to give better error
+               const exists = await db.select({ id: votes.id }).from(votes).where(eq(votes.id, id));
+               if (exists.length === 0) {
+                    return res.status(404).json({ message: 'Vote not found' });
+               }
                return res.status(403).json({ message: 'Cannot delete vote older than 1 minute (Permanent)' });
           }
-
-          // 3. Delete
-          // If it was an online vote, we technically should revert users.hasVoted = false?
-          // But sticking to the request: "Super admin can delete voting data...".
-          // If we delete the vote row, the count is corrected. 
-          // Reverting the "User hasVoted" flag is tricky without knowing WHICH user it was (if anonymous).
-          // But strict 1-min rule is usually for fixing MANUAL entry (offline).
-          // Offline votes have no user link. So deleting the row is sufficient.
-          // Online votes: Deleting the vote row corrects the count. The user remains "hasVoted=true". 
-          // This effectively "spoils" their vote if done on an online vote.
-          // Is this acceptable? "jika ada kesalahan" -> likely for manual input.
-
-          await db.delete(votes).where(eq(votes.id, id));
 
           // Invalidate cache
           cache.del("stats");
