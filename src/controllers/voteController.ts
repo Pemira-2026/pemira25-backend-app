@@ -18,30 +18,25 @@ export const vote = async (req: AuthRequest, res: Response) => {
      }
 
      try {
-          // Transaction to ensure atomicity
           await db.transaction(async (tx) => {
-               // 1. Check if user has voted
                const userCheck = await tx.select({ hasVoted: users.hasVoted }).from(users).where(eq(users.id, userId));
                if (userCheck[0].hasVoted) {
                     throw new Error('User has already voted');
                }
 
-               // 2. Insert ANONYMOUS vote (No voterId)
                await tx.insert(votes).values({
                     candidateId: candidateId,
                     source: 'online'
                });
 
-               // 3. Mark user as voted and timestamp matches logic
                await tx.update(users)
                     .set({ hasVoted: true, votedAt: sql`now()` })
                     .where(eq(users.id, userId));
           });
 
-          // Invalidate cache
           cache.del("stats");
           cache.del("results");
-          cache.del("recent-activity"); // assuming dynamic key or just let it expire
+          cache.del("recent-activity");
 
           res.json({ message: 'Vote cast successfully' });
      } catch (error: any) {
