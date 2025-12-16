@@ -34,7 +34,7 @@ export const vote = async (req: AuthRequest, res: Response) => {
 
                // 3. Mark user as voted and timestamp matches logic
                await tx.update(users)
-                    .set({ hasVoted: true, votedAt: new Date() })
+                    .set({ hasVoted: true, votedAt: sql`now()` })
                     .where(eq(users.id, userId));
           });
 
@@ -169,14 +169,11 @@ import { desc } from 'drizzle-orm';
 
 export const getRecentActivity = async (req: Request, res: Response) => {
      try {
-          // Admin Activity Stream: Show ALL recent votes (Online & Manual)
-          // We query the VOTES table directly for truth
           const recentVotes = await db.select({
                id: votes.id,
                timestamp: votes.timestamp,
                candidateId: votes.candidateId,
                source: votes.source,
-               // Join with candidates to show who got the vote (Admin Internal View)
                candidateName: candidates.name
           })
                .from(votes)
@@ -194,7 +191,6 @@ export const getRecentActivity = async (req: Request, res: Response) => {
 export const deleteVote = async (req: Request, res: Response) => {
      const { id } = req.params;
      try {
-          // DB-Side Validation: Delete only if ID matches AND it was created in the last 1 minute
           const result = await db.execute(sql`
                DELETE FROM votes 
                WHERE id = ${id} 
@@ -203,7 +199,6 @@ export const deleteVote = async (req: Request, res: Response) => {
           `);
 
           if (result.rowCount === 0) {
-               // Check if it exists at all to give better error
                const exists = await db.select({ id: votes.id }).from(votes).where(eq(votes.id, id));
                if (exists.length === 0) {
                     return res.status(404).json({ message: 'Vote not found' });
@@ -211,7 +206,6 @@ export const deleteVote = async (req: Request, res: Response) => {
                return res.status(403).json({ message: 'Cannot delete vote older than 1 minute (Permanent)' });
           }
 
-          // Invalidate cache
           cache.del("stats");
           cache.del("results");
 
