@@ -2,6 +2,12 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
 const candidateController_1 = require("../controllers/candidateController");
+const adminAuth_1 = require("../middleware/adminAuth");
 const router = (0, express_1.Router)();
 router.get('/', candidateController_1.getCandidates);
+router.post('/', adminAuth_1.authenticateAdmin, candidateController_1.createCandidate);
+router.put('/:id', adminAuth_1.authenticateAdmin, candidateController_1.updateCandidate);
+router.delete('/:id', adminAuth_1.authenticateAdmin, candidateController_1.deleteCandidate);
+router.post('/:id/restore', adminAuth_1.authenticateAdmin, candidateController_1.restoreCandidate);
+router.delete('/:id/permanent', adminAuth_1.authenticateAdmin, candidateController_1.permanentDeleteCandidate);
 exports.default = router;

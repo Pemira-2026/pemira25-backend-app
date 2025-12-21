@@ -17,14 +17,22 @@ const nodemailer_1 = __importDefault(require("nodemailer"));
 const dotenv_1 = __importDefault(require("dotenv"));
 const path_1 = __importDefault(require("path"));
 dotenv_1.default.config({ path: path_1.default.join(__dirname, '../../.env') });
+const smtpUser = process.env.SMTP_USER;
+const smtpPassword = process.env.SMTP_PASSWORD || process.env.SMTP_PASS;
+if (!smtpUser || !smtpPassword) {
+    console.warn("⚠️ SMTP Credentials (SMTP_USER or SMTP_PASSWORD/SMTP_PASS) are missing. Email sending will likely fail.");
+}
 const transporter = nodemailer_1.default.createTransport({
     host: process.env.SMTP_HOST || 'smtp.gmail.com',
     port: parseInt(process.env.SMTP_PORT || '587'),
     secure: false, // true for 465, false for other ports
     auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS,
+        user: smtpUser,
+        pass: smtpPassword,
     },
+    pool: true, // Reuse TCP connections to avoid handshake overhead
+    maxConnections: 5, // Limit concurrent connections to avoid SMTP rate limits
+    maxMessages: 100,
 });
 const sendOtpEmail = (email, otp, name) => __awaiter(void 0, void 0, void 0, function* () {
     try {

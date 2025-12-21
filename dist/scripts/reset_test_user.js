@@ -1,4 +1,5 @@
 "use strict";
+// npx ts-node src/scripts/reset_test_user.ts
 var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
     function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
     return new (P || (P = Promise))(function (resolve, reject) {
@@ -23,9 +24,10 @@ function resetUser() {
             process.exit(1);
         }
         const user = userResult[0];
-        // Delete vote record
-        yield db_1.db.delete(schema_1.votes).where((0, drizzle_orm_1.eq)(schema_1.votes.voterId, user.id));
-        console.log('Vote record deleted.');
+        // db.delete(votes) is not possible as votes are anonymous (no voterId column)
+        // We only reset the user's flag so they can vote again.
+        // The original vote will remain in the count.
+        console.log('Skipping vote record deletion (votes are anonymous).');
         // Reset hasVoted flag
         yield db_1.db.update(schema_1.users)
             .set({ hasVoted: false })

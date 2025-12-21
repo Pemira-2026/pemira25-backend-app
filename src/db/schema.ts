@@ -51,3 +51,13 @@ export const actionLogs = pgTable('action_logs', {
      userAgent: text('user_agent'),
      timestamp: timestamp('timestamp', { withTimezone: true }).defaultNow(),
 });
+
+export const systemSettings = pgTable('system_settings', {
+     id: uuid('id').defaultRandom().primaryKey(),
+     isVoteOpen: boolean('is_vote_open').default(false).notNull(),
+     startDate: timestamp('start_date', { withTimezone: true }),
+     endDate: timestamp('end_date', { withTimezone: true }),
+     announcementMessage: text('announcement_message'),
+     showAnnouncement: boolean('show_announcement').default(false).notNull(),
+     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+});

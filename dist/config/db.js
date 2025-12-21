@@ -1,22 +1,22 @@
 "use strict";
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function (o, m, k, k2) {
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
     if (k2 === undefined) k2 = k;
     var desc = Object.getOwnPropertyDescriptor(m, k);
     if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-        desc = { enumerable: true, get: function () { return m[k]; } };
+      desc = { enumerable: true, get: function() { return m[k]; } };
     }
     Object.defineProperty(o, k2, desc);
-}) : (function (o, m, k, k2) {
+}) : (function(o, m, k, k2) {
     if (k2 === undefined) k2 = k;
     o[k2] = m[k];
 }));
-var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function (o, v) {
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
     Object.defineProperty(o, "default", { enumerable: true, value: v });
-}) : function (o, v) {
+}) : function(o, v) {
     o["default"] = v;
 });
 var __importStar = (this && this.__importStar) || (function () {
-    var ownKeys = function (o) {
+    var ownKeys = function(o) {
         ownKeys = Object.getOwnPropertyNames || function (o) {
             var ar = [];
             for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
@@ -51,10 +51,13 @@ const poolConfig = process.env.DATABASE_URL
         database: process.env.DB_NAME || 'pemira_db',
         password: process.env.DB_PASSWORD || '15oktober',
         port: parseInt(process.env.DB_PORT || '5432'),
-        max: 20, // Max clients in the pool
-        idleTimeoutMillis: 30000, // Close idle clients after 30 seconds
-        connectionTimeoutMillis: 2000, // Return an error after 2 seconds if connection could not be established
+        max: parseInt(process.env.DB_POOL_MAX || '50'), // Increased from 20 for scalability
+        idleTimeoutMillis: 30000,
+        connectionTimeoutMillis: 5000, // Increased timeout to avoid failures under load
     };
 const pool = new pg_1.Pool(poolConfig);
+pool.on('connect', (client) => {
+    client.query("SET TIMEZONE TO 'Asia/Jakarta'");
+});
 exports.db = (0, node_postgres_1.drizzle)(pool, { schema });
-exports.default = pool; // Keep pool for any raw queries if absolutely needed, but prefer 'db'
+exports.default = pool;

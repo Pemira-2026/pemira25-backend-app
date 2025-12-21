@@ -11,6 +11,7 @@ import adminRoutes from './routes/adminRoutes';
 import studentRoutes from './routes/studentRoutes';
 import { db } from './config/db';
 import { sql } from 'drizzle-orm';
+import settingsRoutes from './routes/settings';
 
 // Load env
 dotenv.config({ path: path.join(__dirname, '../.env') });
@@ -48,6 +49,7 @@ app.use('/api/votes', voteRoutes);
 app.use('/api/candidates', candidateRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/students', studentRoutes);
+app.use('/api/settings', settingsRoutes);
 
 // Health check
 app.get('/health', async (req, res) => {
