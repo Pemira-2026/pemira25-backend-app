@@ -12,7 +12,7 @@ const options = {
     definition: {
         openapi: '3.0.0',
         info: {
-            title: 'PEMIRA STTNF API',
+            title: 'PEMIRA STTNF API 25',
             version: '1.0.0',
             description: 'API documentation for PEMIRA STTNF Voting System',
             contact: {
