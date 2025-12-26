@@ -15,8 +15,26 @@ const schema_1 = require("../db/schema");
 const drizzle_orm_1 = require("drizzle-orm");
 const authMiddleware_1 = require("../middleware/authMiddleware");
 const adminAuth_1 = require("../middleware/adminAuth");
+const actionLogger_1 = require("../utils/actionLogger");
 const router = (0, express_1.Router)();
-// GET /api/settings
+/**
+ * @swagger
+ * tags:
+ *   name: Settings
+ *   description: System settings
+ */
+/**
+ * @swagger
+ * /api/settings:
+ *   get:
+ *     summary: Get system settings
+ *     tags: [Settings]
+ *     responses:
+ *       200:
+ *         description: System settings
+ *       500:
+ *         description: Internal Server Error
+ */
 router.get('/', (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     try {
         const settings = yield db_1.db.select().from(schema_1.systemSettings).limit(1);
@@ -24,8 +42,7 @@ router.get('/', (req, res) => __awaiter(void 0, void 0, void 0, function* () {
             // Create default settings if not exists
             const defaultSettings = yield db_1.db.insert(schema_1.systemSettings).values({
                 isVoteOpen: false,
-                showAnnouncement: false,
-                allowGuest: false
+                showAnnouncement: false
             }).returning();
             res.json(defaultSettings[0]);
             return;
@@ -40,7 +57,7 @@ router.get('/', (req, res) => __awaiter(void 0, void 0, void 0, function* () {
 // PUT /api/settings (Admin only)
 router.put('/', authMiddleware_1.authenticateToken, adminAuth_1.requireSuperAdmin, (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     try {
-        const { isVoteOpen, startDate, endDate, announcementMessage, showAnnouncement, allowGuest } = req.body;
+        const { isVoteOpen, startDate, endDate, announcementMessage, showAnnouncement } = req.body;
         const existing = yield db_1.db.select().from(schema_1.systemSettings).limit(1);
         if (existing.length === 0) {
             const newSettings = yield db_1.db.insert(schema_1.systemSettings).values({
@@ -48,8 +65,7 @@ router.put('/', authMiddleware_1.authenticateToken, adminAuth_1.requireSuperAdmi
                 startDate: startDate ? new Date(startDate) : null,
                 endDate: endDate ? new Date(endDate) : null,
                 announcementMessage,
-                showAnnouncement,
-                allowGuest
+                showAnnouncement
             }).returning();
             res.json(newSettings[0]);
         }
@@ -61,11 +77,12 @@ router.put('/', authMiddleware_1.authenticateToken, adminAuth_1.requireSuperAdmi
                 endDate: endDate ? new Date(endDate) : null,
                 announcementMessage,
                 showAnnouncement,
-                allowGuest,
                 updatedAt: new Date()
             })
                 .where((0, drizzle_orm_1.eq)(schema_1.systemSettings.id, existing[0].id))
                 .returning();
+            // Log Activity
+            yield (0, actionLogger_1.logAction)(req, "UPDATE_SETTINGS", "System Settings", `Updated settings. Vote Open: ${isVoteOpen}, Announcement: ${showAnnouncement}`);
             res.json(updatedSettings[0]);
         }
     }

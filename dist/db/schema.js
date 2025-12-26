@@ -55,6 +55,5 @@ exports.systemSettings = (0, pg_core_1.pgTable)('system_settings', {
     endDate: (0, pg_core_1.timestamp)('end_date', { withTimezone: true }),
     announcementMessage: (0, pg_core_1.text)('announcement_message'),
     showAnnouncement: (0, pg_core_1.boolean)('show_announcement').default(false).notNull(),
-    allowGuest: (0, pg_core_1.boolean)('allow_guest').default(false).notNull(), // Guest voting toggle
     updatedAt: (0, pg_core_1.timestamp)('updated_at', { withTimezone: true }).defaultNow(),
 });

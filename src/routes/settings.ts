@@ -8,7 +8,25 @@ import { logAction } from '../utils/actionLogger';
 
 const router = Router();
 
-// GET /api/settings
+/**
+ * @swagger
+ * tags:
+ *   name: Settings
+ *   description: System settings
+ */
+
+/**
+ * @swagger
+ * /api/settings:
+ *   get:
+ *     summary: Get system settings
+ *     tags: [Settings]
+ *     responses:
+ *       200:
+ *         description: System settings
+ *       500:
+ *         description: Internal Server Error
+ */
 router.get('/', async (req: Request, res: Response) => {
      try {
           const settings = await db.select().from(systemSettings).limit(1);

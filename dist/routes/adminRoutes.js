@@ -21,6 +21,26 @@ const bcrypt_1 = __importDefault(require("bcrypt"));
 const actionLogger_1 = require("../utils/actionLogger");
 const router = (0, express_1.Router)();
 router.use(adminAuth_1.authenticateAdmin, adminAuth_1.requireSuperAdmin);
+/**
+ * @swagger
+ * tags:
+ *   name: Admin
+ *   description: Admin user management and logs
+ */
+/**
+ * @swagger
+ * /api/admin/users:
+ *   get:
+ *     summary: Get all users (Super Admin only)
+ *     tags: [Admin]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: List of users
+ *       403:
+ *         description: Forbidden
+ */
 router.get('/users', (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     try {
         const result = yield db_1.db.select().from(schema_1.users);
@@ -31,6 +51,42 @@ router.get('/users', (req, res) => __awaiter(void 0, void 0, void 0, function* (
         res.status(500).json({ error: 'Internal Server Error' });
     }
 }));
+/**
+ * @swagger
+ * /api/admin/users/{id}/role:
+ *   patch:
+ *     summary: Update user role
+ *     tags: [Admin]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - role
+ *             properties:
+ *               role:
+ *                 type: string
+ *                 enum: [voter, panitia, super_admin]
+ *               password:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: User role updated
+ *       400:
+ *         description: Invalid role
+ *       404:
+ *         description: User not found
+ */
 router.patch('/users/:id/role', (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     const { id } = req.params;
     const { role, password } = req.body; // 'voter', 'panitia', 'super_admin'
@@ -60,7 +116,35 @@ router.patch('/users/:id/role', (req, res) => __awaiter(void 0, void 0, void 0, 
         res.status(500).json({ error: 'Failed to update role' });
     }
 }));
-// Get Action Logs (Super Admin Only)
+/**
+ * @swagger
+ * /api/admin/logs:
+ *   get:
+ *     summary: Get audit logs
+ *     tags: [Admin]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *       - in: query
+ *         name: search
+ *         schema:
+ *           type: string
+ *       - in: query
+ *         name: action
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: List of audit logs
+ */
 router.get('/logs', (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     try {
         const { page = 1, limit = 50, search, action } = req.query;

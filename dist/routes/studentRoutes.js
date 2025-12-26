@@ -51,9 +51,36 @@ const upload_1 = require("../middleware/upload");
 const XLSX = __importStar(require("xlsx"));
 const actionLogger_1 = require("../utils/actionLogger");
 const router = (0, express_1.Router)();
+/**
+ * @swagger
+ * tags:
+ *   name: Students
+ *   description: Student management
+ */
 // Allow both Super Admin and Panitia for general routes
 router.use(adminAuth_1.authenticateAdmin);
 // ... (Import route logic is fine) ...
+/**
+ * @swagger
+ * /api/students/import:
+ *   post:
+ *     summary: Import students from Excel
+ *     tags: [Students]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               file:
+ *                 type: string
+ *                 format: binary
+ *     responses:
+ *       200:
+ *         description: Students imported
+ */
 router.post('/import', upload_1.upload.single('file'), (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     // ... import logic ...
     if (!req.file) {
@@ -113,6 +140,37 @@ router.post('/import', upload_1.upload.single('file'), (req, res) => __awaiter(v
     }
 }));
 // Create single student
+/**
+ * @swagger
+ * /api/students:
+ *   post:
+ *     summary: Create a new student (Admin only)
+ *     tags: [Students]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - nim
+ *               - name
+ *             properties:
+ *               nim:
+ *                 type: string
+ *               name:
+ *                 type: string
+ *               email:
+ *                 type: string
+ *                 format: email
+ *     responses:
+ *       201:
+ *         description: Student created
+ *       400:
+ *         description: Invalid input or student already exists
+ */
 router.post('/', (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     const { nim, name, email } = req.body;
     if (!nim || !name) {
@@ -141,12 +199,36 @@ router.post('/', (req, res) => __awaiter(void 0, void 0, void 0, function* () {
 }));
 // Import students from Excel
 // Get students (voters)
+/**
+ * @swagger
+ * /api/students:
+ *   get:
+ *     summary: Get all students
+ *     tags: [Students]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *       - in: query
+ *         name: search
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: List of students
+ */
 router.get('/', (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     try {
         const { search, page = 1, limit = 50, includeDeleted } = req.query;
         const offset = (Number(page) - 1) * Number(limit);
         const shouldIncludeDeleted = includeDeleted === 'true';
-        // Note: Logic simplified for filtering. 
         // Ideally fetch only non-deleted unless requested
         const allStudents = yield db_1.db.select().from(schema_1.users).where((0, drizzle_orm_1.eq)(schema_1.users.role, 'voter'));
         // Manual filtering + Soft Delete Check

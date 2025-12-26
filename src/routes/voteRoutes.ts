@@ -4,9 +4,64 @@ import { authenticateToken } from '../middleware/authMiddleware';
 
 const router = Router();
 
+/**
+ * @swagger
+ * tags:
+ *   name: Votes
+ *   description: Voting operations
+ */
+
+/**
+ * @swagger
+ * /api/votes:
+ *   post:
+ *     summary: Submit a vote
+ *     tags: [Votes]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - candidateId
+ *             properties:
+ *               candidateId:
+ *                 type: string
+ *     responses:
+ *       201:
+ *         description: Vote submitted
+ *       400:
+ *         description: Already voted
+ */
 router.post('/', authenticateToken as any, vote as any);
+
+/**
+ * @swagger
+ * /api/votes/status:
+ *   get:
+ *     summary: Get voting status for current user
+ *     tags: [Votes]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Vote status
+ */
 router.get('/status', authenticateToken as any, getVoteStatus as any);
-router.get('/stats', getStats as any); // Public
+
+/**
+ * @swagger
+ * /api/votes/stats:
+ *   get:
+ *     summary: Get voting statistics
+ *     tags: [Votes]
+ *     responses:
+ *       200:
+ *         description: Voting statistics
+ */
 router.get('/stats', getStats as any); // Public
 router.get('/results', getResults as any); // Public
 

@@ -9,10 +9,38 @@ import { logAction } from '../utils/actionLogger';
 
 const router = Router();
 
+/**
+ * @swagger
+ * tags:
+ *   name: Students
+ *   description: Student management
+ */
+
 // Allow both Super Admin and Panitia for general routes
 router.use(authenticateAdmin);
 
 // ... (Import route logic is fine) ...
+/**
+ * @swagger
+ * /api/students/import:
+ *   post:
+ *     summary: Import students from Excel
+ *     tags: [Students]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               file:
+ *                 type: string
+ *                 format: binary
+ *     responses:
+ *       200:
+ *         description: Students imported
+ */
 router.post('/import', upload.single('file'), async (req, res) => {
      // ... import logic ...
      if (!req.file) {
@@ -79,6 +107,37 @@ router.post('/import', upload.single('file'), async (req, res) => {
 });
 
 // Create single student
+/**
+ * @swagger
+ * /api/students:
+ *   post:
+ *     summary: Create a new student (Admin only)
+ *     tags: [Students]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - nim
+ *               - name
+ *             properties:
+ *               nim:
+ *                 type: string
+ *               name:
+ *                 type: string
+ *               email:
+ *                 type: string
+ *                 format: email
+ *     responses:
+ *       201:
+ *         description: Student created
+ *       400:
+ *         description: Invalid input or student already exists
+ */
 router.post('/', async (req, res) => {
      const { nim, name, email } = req.body;
 
@@ -114,13 +173,37 @@ router.post('/', async (req, res) => {
 // Import students from Excel
 
 // Get students (voters)
+/**
+ * @swagger
+ * /api/students:
+ *   get:
+ *     summary: Get all students
+ *     tags: [Students]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *       - in: query
+ *         name: search
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: List of students
+ */
 router.get('/', async (req, res) => {
      try {
           const { search, page = 1, limit = 50, includeDeleted } = req.query;
           const offset = (Number(page) - 1) * Number(limit);
           const shouldIncludeDeleted = includeDeleted === 'true';
 
-          // Note: Logic simplified for filtering. 
           // Ideally fetch only non-deleted unless requested
           const allStudents = await db.select().from(users).where(
                eq(users.role, 'voter')
