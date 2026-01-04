@@ -1,4 +1,5 @@
 import { pgTable, text, boolean, timestamp, integer, uuid } from 'drizzle-orm/pg-core';
+import { relations } from 'drizzle-orm';
 
 
 export const users = pgTable('users', {
@@ -25,6 +26,58 @@ export const candidates = pgTable('candidates', {
      createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
      deletedAt: timestamp('deleted_at', { withTimezone: true }), // Soft Delete
 });
+
+// Chat System Schema
+export const chatSessions = pgTable('chat_sessions', {
+     id: uuid('id').defaultRandom().primaryKey(),
+     studentId: uuid('student_id').references(() => users.id, { onDelete: 'cascade' }),
+     // Store basic info for guest/quick access if needed, or link to User
+     guestName: text('guest_name'),
+     guestEmail: text('guest_email'),
+
+     // Session Status
+     status: text('status', { enum: ['open', 'closed', 'archived'] }).default('open').notNull(),
+
+     // Metadata
+     deviceInfo: text('device_info'),
+     ipAddress: text('ip_address'),
+
+     lastMessageAt: timestamp('last_message_at', { withTimezone: true }).defaultNow(),
+     lastMessageBy: text('last_message_by', { enum: ['student', 'admin', 'system'] }), // To track who sent the last msg
+     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const chatMessages = pgTable('chat_messages', {
+     id: uuid('id').defaultRandom().primaryKey(),
+     sessionId: uuid('session_id').references(() => chatSessions.id, { onDelete: 'cascade' }).notNull(),
+
+     // Sender Info
+     senderType: text('sender_type', { enum: ['student', 'admin', 'system'] }).notNull(),
+     senderId: uuid('sender_id'), // Nullable (if guest or system)
+
+     // Content
+     message: text('message').notNull(),
+     isRead: boolean('is_read').default(false),
+
+     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+// Relations
+export const chatSessionsRelations = relations(chatSessions, ({ one, many }) => ({
+     student: one(users, {
+          fields: [chatSessions.studentId],
+          references: [users.id],
+     }),
+     messages: many(chatMessages),
+}));
+
+export const chatMessagesRelations = relations(chatMessages, ({ one }) => ({
+     session: one(chatSessions, {
+          fields: [chatMessages.sessionId],
+          references: [chatSessions.id],
+     }),
+}));
 
 export const votes = pgTable('votes', {
      id: uuid('id').defaultRandom().primaryKey(),

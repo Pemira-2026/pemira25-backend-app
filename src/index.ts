@@ -13,11 +13,17 @@ import { db } from './config/db';
 import { sql } from 'drizzle-orm';
 import settingsRoutes from './routes/settings';
 import broadcastRoutes from './routes/broadcastRoutes';
+import chatRoutes from './routes/chatRoutes';
+import { createServer } from 'http';
+import { Server } from 'socket.io';
+import { socketAuth } from './middleware/socketSecurity';
+import { requestChatHandler } from './socket/chatHandler';
 
 // Load env
 dotenv.config({ path: path.join(__dirname, '../.env') });
 
 const app = express();
+const server = createServer(app);
 const PORT = process.env.PORT || 5000;
 
 // Trust Vercel Proxy (Required for secure cookies)
@@ -57,6 +63,7 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/students', studentRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/broadcast', broadcastRoutes);
+app.use('/api/chat', chatRoutes);
 
 // Health check
 app.get('/health', async (req, res) => {
@@ -76,7 +83,36 @@ import { initEmailWorker } from './worker/emailWorker';
 // Initialize Worker
 initEmailWorker();
 
-app.listen(PORT, () => {
+// Initialize Worker
+initEmailWorker();
+
+// --- Socket.IO Setup ---
+const io = new Server(server, {
+     cors: {
+          origin: [
+               'http://localhost:3000',
+               'http://localhost:3001',
+               'http://localhost:3002',
+               'http://10.0.3.111:3000',
+               'https://pemira-sttnf.vercel.app',
+               'https://pemira.nurulfikri.ac.id',
+               'https://pemira.oktaa.my.id',
+               'https://admin-pemira-pi.vercel.app',
+               process.env.FRONTEND_URL || ''
+          ].filter(Boolean),
+          credentials: true
+     }
+});
+
+app.set('io', io); // Share IO instance
+
+// Middleware for Socket Auth
+io.use(socketAuth);
+
+// Initialize Chat Handler
+requestChatHandler(io);
+
+server.listen(PORT, () => {
      console.log(`Server running on port ${PORT}`);
 
      if (process.env.JWT_SECRET === undefined || process.env.JWT_SECRET === 'super_secret_key_change_me') {

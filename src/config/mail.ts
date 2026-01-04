@@ -79,7 +79,7 @@ export const sendOtpEmail = async (email: string, otp: string, name?: string) =>
                                 <td style="background: linear-gradient(135deg, #0248a3 0%, #00337d 100%); padding: 40px 20px; text-align: center;">
                                     <div style="display: inline-block; background-color: white; padding: 12px; border-radius: 12px; margin-bottom: 16px;">
                                         <!-- Using placeholder if no public URL available yet. Ideally this is a hosted image -->
-                                        <img src="https://cdn.oktaa.my.id/pemira-logo-text.svg" alt="PEMIRA Logo" style="width: 48px; height: 48px; object-fit: contain; display: block;" onerror="this.style.display='none'">
+                                        <img src="/pemira-logo-text.svg" alt="PEMIRA Logo" style="width: 48px; height: 48px; object-fit: contain; display: block;" onerror="this.style.display='none'">
                                     </div>
                                     <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 700; letter-spacing: 0.5px;">PEMIRA STTNF</h1>
                                 </td>
@@ -117,8 +117,8 @@ export const sendOtpEmail = async (email: string, otp: string, name?: string) =>
                                             📞 +62 851-5663-6423 (Humas)
                                         </a>
                                     </div>
-                                    <p style="color: #cbd5e1; font-size: 12px; margin: 24px 0 0; text-align: center;">
-                                        &copy; ${new Date().getFullYear()} Panitia PEMIRA STTNF. All rights reserved.
+                                    <p style="color: #94a3b8; font-size: 12px; margin: 24px 0 0; text-align: center;">
+                                        &copy; ${new Date().getFullYear()} Panitia PEMIRA IM STTNF. All rights reserved.
                                     </p>
                                 </td>
                             </tr>
