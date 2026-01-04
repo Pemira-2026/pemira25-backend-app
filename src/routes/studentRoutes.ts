@@ -42,43 +42,57 @@ router.use(authenticateAdmin);
  *         description: Students imported
  */
 router.post('/import', upload.single('file'), async (req, res) => {
-     // ... import logic ...
-     if (!req.file) {
-          return res.status(400).json({ error: 'No file uploaded' });
-     }
-
      try {
-          const workbook = XLSX.read(req.file.buffer, { type: 'buffer' });
-          const sheetName = workbook.SheetNames[0];
-          const sheet = workbook.Sheets[sheetName];
-          const data: any[] = XLSX.utils.sheet_to_json(sheet);
+          let data: any[] = [];
+
+          // 1. Check if data is sent as JSON body (Frontend currently does this)
+          if (req.body.students && Array.isArray(req.body.students)) {
+               data = req.body.students;
+          }
+          // 2. Fallback: Parse file if uploaded (Legacy support)
+          else if (req.file) {
+               const workbook = XLSX.read(req.file.buffer, { type: 'buffer' });
+               const sheetName = workbook.SheetNames[0];
+               const sheet = workbook.Sheets[sheetName];
+               data = XLSX.utils.sheet_to_json(sheet);
+          }
+          // 3. Error if neither
+          else {
+               return res.status(400).json({ error: 'No data provided. Please upload a file or send JSON data.' });
+          }
 
           let successCount = 0;
           let errorCount = 0;
 
+          // Process the data (Filtering & Insertion)
           for (const row of data) {
-               const nim = row['NIM'] || row['nim'];
-               const name = row['Name'] || row['name'];
+               // Normalize keys (handle formatting issues)
+               const nim = row['NIM'] || row['nim'] || row['Nim'];
+               const name = row['Name'] || row['name'] || row['Nama'] || row['nama']; // Added 'Nama' support
                const email = row['Email'] || row['email'];
 
-               if (!nim) {
+               // Filter: Skip invalid rows
+               if (!nim || !name) {
                     errorCount++;
                     continue;
                }
 
+               const normalizedNim = String(nim).trim();
+               const normalizedName = String(name).trim();
+
                try {
-                    const existing = await db.select().from(users).where(eq(users.nim, String(nim)));
+                    const existing = await db.select().from(users).where(eq(users.nim, normalizedNim));
 
                     if (existing.length > 0) {
                          await db.update(users).set({
-                              name: name || existing[0].name,
+                              name: normalizedName,
                               email: email || existing[0].email,
                               deletedAt: null // Restore if re-importing a soft deleted user
-                         }).where(eq(users.nim, String(nim)));
+                         }).where(eq(users.nim, normalizedNim));
                     } else {
                          await db.insert(users).values({
-                              nim: String(nim),
-                              name: name || '',
+                              nim: normalizedNim,
+                              name: normalizedName,
                               email: email || null,
                               role: 'voter',
                               hasVoted: false
@@ -86,13 +100,13 @@ router.post('/import', upload.single('file'), async (req, res) => {
                     }
                     successCount++;
                } catch (err) {
-                    console.error(`Failed to process NIM ${nim}`, err);
+                    console.error(`Failed to process NIM ${normalizedNim}`, err);
                     errorCount++;
                }
           }
 
           res.json({
-               message: 'Import processed',
+               message: 'Import processed successfully',
                total: data.length,
                success: successCount,
                errors: errorCount
@@ -102,7 +116,7 @@ router.post('/import', upload.single('file'), async (req, res) => {
 
      } catch (error) {
           console.error('Import error:', error);
-          res.status(500).json({ error: 'Failed to process import file' });
+          res.status(500).json({ error: 'Failed to process import data' });
      }
 });
 
