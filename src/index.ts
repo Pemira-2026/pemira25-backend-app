@@ -64,8 +64,26 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/students', studentRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/broadcast', broadcastRoutes);
+app.get('/api/health', async (req, res) => {
+     try {
+          await db.execute(sql`SELECT 1`);
+          res.json({ status: 'ok', timestamp: new Date(), dbStatus: 'ok' });
+     } catch (error) {
+          console.error('Health check failed:', error);
+          res.status(500).json({ status: 'error', timestamp: new Date(), dbStatus: 'disconnected' });
+     }
+});
+
+// Bridge Socket.IO for Vercel Serverless
+// Since Vercel uses the exported 'app' and not our 'server', we must manually pass socket requests
+app.all('/socket.io/*?', (req, res) => {
+     // @ts-ignore: io.engine types might expect raw http headers
+     io.engine.handleRequest(req, res);
+});
+
 app.use('/api/chat', chatRoutes);
 
+// Health check
 // Health check
 app.get('/health', async (req, res) => {
      try {
@@ -76,6 +94,7 @@ app.get('/health', async (req, res) => {
           res.status(500).json({ status: 'error', timestamp: new Date(), dbStatus: 'disconnected' });
      }
 });
+
 
 import { initEmailWorker } from './worker/emailWorker';
 
