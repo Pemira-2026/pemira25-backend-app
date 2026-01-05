@@ -1,6 +1,6 @@
 import { Server, Socket } from 'socket.io';
 import { db } from '../config/db';
-import { chatSessions, chatMessages, users } from '../db/schema';
+import { chatSessions, chatMessages } from '../db/schema';
 import { eq, desc } from 'drizzle-orm';
 import { AuthenticatedSocket, checkRateLimit } from '../middleware/socketSecurity';
 import { z } from 'zod';
@@ -120,7 +120,7 @@ export const requestChatHandler = (io: Server) => {
                     // Update session
                     await db.update(chatSessions).set({
                          lastMessageAt: new Date(),
-                         lastMessageBy: 'student', // Updated
+                         lastMessageBy: 'student',
                          updatedAt: new Date()
                     }).where(eq(chatSessions.id, sessionId));
 
@@ -138,9 +138,8 @@ export const requestChatHandler = (io: Server) => {
                }
           });
 
-          // ... (admin join handlers)
 
-          const allowedAdminRoles = ['admin', 'super_admin', 'panitia'];
+          const allowedAdminRoles = ['super_admin', 'panitia'];
 
           socket.on('join_admin', () => {
                if (socket.user && allowedAdminRoles.includes(socket.user.role)) {
@@ -171,17 +170,19 @@ export const requestChatHandler = (io: Server) => {
                const { message, sessionId } = validation.data;
                if (!sessionId) return;
 
+               const senderRole = socket.user.role; // 'panitia' or 'super_admin'
+
                try {
                     const [msg] = await db.insert(chatMessages).values({
                          sessionId,
-                         senderType: 'admin',
+                         senderType: senderRole,
                          senderId: socket.user.id,
                          message
                     }).returning();
 
                     await db.update(chatSessions).set({
                          lastMessageAt: new Date(),
-                         lastMessageBy: 'admin', // Updated
+                         lastMessageBy: senderRole,
                          updatedAt: new Date()
                     }).where(eq(chatSessions.id, sessionId));
 
@@ -191,7 +192,7 @@ export const requestChatHandler = (io: Server) => {
                     io.emit('session_update', {
                          sessionId,
                          lastMessage: message,
-                         lastMessageBy: 'admin'
+                         lastMessageBy: senderRole
                     });
                } catch (err) {
                     console.error('Admin send error:', err);

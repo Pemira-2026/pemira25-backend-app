@@ -160,10 +160,7 @@ export const manualVote = async (req: Request, res: Response) => {
      }
 }
 
-// ... imports
 import { desc } from 'drizzle-orm';
-
-// ... existing code
 
 export const getRecentActivity = async (req: Request, res: Response) => {
      try {

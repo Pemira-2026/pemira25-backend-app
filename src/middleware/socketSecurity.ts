@@ -22,10 +22,7 @@ export const socketAuth = async (socket: AuthenticatedSocket, next: (err?: any) 
                     const decoded = jwt.verify(token, process.env.JWT_SECRET!);
                     socket.user = decoded;
                } catch (err) {
-                    // Invalid token, but we might allow guest/student access without 'admin' privileges
-                    // For now, if a token is provided but invalid, we log it but don't block connection entirely 
-                    // unless we want strict auth. 
-                    // Better approach: If token invalid, treat as guest.
+                    // Invalid token - treat as guest
                }
           }
 

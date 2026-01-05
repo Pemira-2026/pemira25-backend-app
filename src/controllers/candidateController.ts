@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import { db } from '../config/db';
-import { candidates, votes, users } from '../db/schema';
-import { asc, eq, inArray, isNull } from 'drizzle-orm';
+import { candidates } from '../db/schema';
+import { asc, eq, isNull } from 'drizzle-orm';
 import { logAction } from '../utils/actionLogger';
 
 // Helper to trigger frontend revalidation

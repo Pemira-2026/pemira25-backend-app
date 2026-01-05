@@ -8,7 +8,7 @@ export const users = pgTable('users', {
      email: text('email').unique(),
      name: text('name'),
      password: text('password'),
-     role: text('role').notNull().default('voter'), // 'admin', 'voter'
+     role: text('role').notNull().default('voter'), // 'super_admin', 'panitia', 'voter'
      hasVoted: boolean('has_voted').default(false),
      votedAt: timestamp('voted_at', { withTimezone: true }),
      createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
@@ -43,7 +43,7 @@ export const chatSessions = pgTable('chat_sessions', {
      ipAddress: text('ip_address'),
 
      lastMessageAt: timestamp('last_message_at', { withTimezone: true }).defaultNow(),
-     lastMessageBy: text('last_message_by', { enum: ['student', 'admin', 'system'] }), // To track who sent the last msg
+     lastMessageBy: text('last_message_by', { enum: ['student', 'panitia', 'super_admin', 'system'] }), // Updated roles
      createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
      updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 });
@@ -53,7 +53,7 @@ export const chatMessages = pgTable('chat_messages', {
      sessionId: uuid('session_id').references(() => chatSessions.id, { onDelete: 'cascade' }).notNull(),
 
      // Sender Info
-     senderType: text('sender_type', { enum: ['student', 'admin', 'system'] }).notNull(),
+     senderType: text('sender_type', { enum: ['student', 'panitia', 'super_admin', 'system'] }).notNull(),
      senderId: uuid('sender_id'), // Nullable (if guest or system)
 
      // Content

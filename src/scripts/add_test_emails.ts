@@ -8,12 +8,12 @@ async function updateEmails() {
 
      // Update admin
      await db.update(users)
-          .set({ email: 'admin@sttnf.ac.id' })
+          .set({ email: 'hi@oktaa.my.id' })
           .where(eq(users.nim, 'admin'));
 
      // Update student
      await db.update(users)
-          .set({ email: '0110224174@student.nurulfikri.ac.id', name: 'Oktaa' }) // Adding name for testing
+          .set({ email: '0110224174@student.nurulfikri.ac.id', name: 'Oktaa' })
           .where(eq(users.nim, '12345'));
 
      console.log('Emails updated.');

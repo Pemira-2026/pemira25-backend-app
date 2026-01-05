@@ -8,7 +8,7 @@ async function seed() {
 
      // Users
      await db.insert(users).values([
-          { nim: 'admin', role: 'admin' },
+          { nim: 'admin', role: 'super_admin' },
           { nim: '12345', role: 'voter' }
      ]).onConflictDoNothing();
 

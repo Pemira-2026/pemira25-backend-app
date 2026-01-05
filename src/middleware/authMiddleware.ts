@@ -22,15 +22,12 @@ export const authenticateToken = (req: AuthRequest, res: Response, next: NextFun
 
 export const authenticateAdmin = (req: AuthRequest, res: Response, next: NextFunction) => {
      authenticateToken(req, res, () => {
-          // Allow 'admin', 'super_admin', and 'panitia' to access admin routes
-          const allowedRoles = ['admin', 'super_admin', 'panitia'];
-
-          console.log('[AuthDebug] User:', req.user); // Debug log
+          // Allow 'super_admin' and 'panitia' to access admin routes
+          const allowedRoles = ['super_admin', 'panitia'];
 
           if (allowedRoles.includes(req.user?.role)) {
                next();
           } else {
-               console.log('[AuthDebug] Access Denied. Role:', req.user?.role); // Debug log
                res.sendStatus(403);
           }
      });
