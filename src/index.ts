@@ -128,7 +128,7 @@ server.listen(PORT, () => {
      // Initialize Worker
      initEmailWorker();
 
-     if (process.env.JWT_SECRET === undefined || process.env.JWT_SECRET === 'super_secret_key_change_me') {
+     if (process.env.JWT_SECRET === undefined || process.env.JWT_SECRET === 'ea9dd5af6befb4b8b1b9d17d75f0f5afea1f3bde012cc1fa58cc5f926ab355e121ddb710eaaf6684e309d6f906946d8985b8a1ad5be14efc62e2029a9a5f50b0') {
           console.warn('\x1b[33m%s\x1b[0m', 'WARNING: You are using the default JWT_SECRET. This is insecure for production!');
           console.warn('\x1b[33m%s\x1b[0m', 'Please set a strong JWT_SECRET in your .env file.');
      }

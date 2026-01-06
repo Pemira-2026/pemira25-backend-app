@@ -11,7 +11,7 @@ import { z } from 'zod';
 import bcrypt from 'bcryptjs';
 import { logAction } from "../utils/actionLogger";
 
-const JWT_SECRET = process.env.JWT_SECRET || 'super_secret_key_change_me';
+const JWT_SECRET = process.env.JWT_SECRET || 'ea9dd5af6befb4b8b1b9d17d75f0f5afea1f3bde012cc1fa58cc5f926ab355e121ddb710eaaf6684e309d6f906946d8985b8a1ad5be14efc62e2029a9a5f50b0';
 
 export const adminLogin = async (req: Request, res: Response) => {
      const { email, password } = req.body;
