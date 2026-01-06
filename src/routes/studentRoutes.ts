@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { db } from '../config/db';
 import { users } from '../db/schema';
-import { eq, ilike, isNull } from 'drizzle-orm';
+import { eq, ilike, isNull, and } from 'drizzle-orm';
 import { authenticateAdmin, requireSuperAdmin } from '../middleware/adminAuth';
 import { upload } from '../middleware/upload';
 import * as XLSX from 'xlsx';
@@ -271,18 +271,20 @@ router.get('/', async (req, res) => {
 
           // Ideally fetch only non-deleted unless requested
           const allStudents = await db.select().from(users).where(
-               eq(users.role, 'voter')
+               and(
+                    eq(users.role, 'voter'),
+                    shouldIncludeDeleted ? undefined : isNull(users.deletedAt)
+               )
           );
 
-          // Manual filtering + Soft Delete Check
+          // Manual filtering for Search
           const filtered = allStudents.filter(u =>
-               (shouldIncludeDeleted || u.deletedAt === null) && // Exclude soft deleted unless requested
-               (
-                    !search ||
-                    u.name?.toLowerCase().includes(String(search).toLowerCase()) ||
-                    u.nim?.toLowerCase().includes(String(search).toLowerCase()) ||
-                    u.email?.toLowerCase().includes(String(search).toLowerCase())
-               )
+          (
+               !search ||
+               u.name?.toLowerCase().includes(String(search).toLowerCase()) ||
+               u.nim?.toLowerCase().includes(String(search).toLowerCase()) ||
+               u.email?.toLowerCase().includes(String(search).toLowerCase())
+          )
           );
 
           const paginated = filtered.slice(offset, offset + Number(limit));

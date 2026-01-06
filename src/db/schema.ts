@@ -1,4 +1,4 @@
-import { pgTable, text, boolean, timestamp, integer, uuid } from 'drizzle-orm/pg-core';
+import { pgTable, text, boolean, timestamp, integer, uuid, jsonb } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 
 
@@ -115,4 +115,16 @@ export const systemSettings = pgTable('system_settings', {
      announcementMessage: text('announcement_message'),
      showAnnouncement: boolean('show_announcement').default(false).notNull(),
      updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+});
+
+export const broadcasts = pgTable('broadcasts', {
+     id: uuid('id').defaultRandom().primaryKey(),
+     subject: text('subject').notNull(),
+     content: text('content').notNull(), // HTML content
+     filters: jsonb('filters').default({ target: 'all' }), // { target: 'all'|'batch'|'unvoted', batches: [] }
+     status: text('status', { enum: ['draft', 'processing', 'completed', 'failed'] }).default('draft').notNull(),
+     stats: jsonb('stats').default({ total: 0, sent: 0, failed: 0 }),
+     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+     createdBy: text('created_by'), // Admin email or ID
 });

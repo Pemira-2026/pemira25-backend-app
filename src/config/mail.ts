@@ -11,6 +11,7 @@ if (!smtpUser || !smtpPassword) {
     console.warn("⚠️ SMTP Credentials (SMTP_USER or SMTP_PASSWORD/SMTP_PASS) are missing. Email sending will likely fail.");
 }
 
+// Primary Transporter
 const transporter = nodemailer.createTransport({
     host: process.env.SMTP_HOST || 'smtp.gmail.com',
     port: parseInt(process.env.SMTP_PORT || '587'),
@@ -19,10 +20,27 @@ const transporter = nodemailer.createTransport({
         user: smtpUser,
         pass: smtpPassword,
     },
-    pool: true, // Reuse TCP connections to avoid handshake overhead
-    maxConnections: 5, // Limit concurrent connections to avoid SMTP rate limits
+    pool: true,
+    maxConnections: 5,
     maxMessages: 100,
 });
+
+// Backup Transporter (Optional)
+let backupTransporter: nodemailer.Transporter | null = null;
+if (process.env.BACKUP_SMTP_HOST && process.env.BACKUP_SMTP_USER) {
+    backupTransporter = nodemailer.createTransport({
+        host: process.env.BACKUP_SMTP_HOST,
+        port: parseInt(process.env.BACKUP_SMTP_PORT || '587'),
+        secure: false,
+        auth: {
+            user: process.env.BACKUP_SMTP_USER,
+            pass: process.env.BACKUP_SMTP_PASS,
+        },
+        pool: true,
+        maxConnections: 3,
+    });
+    console.log("✅ Backup SMTP Configured");
+}
 
 // Helper to format email with default styles
 export const formatEmailHtml = (html: string) => {
@@ -41,34 +59,63 @@ export const formatEmailHtml = (html: string) => {
     return finalHtml;
 };
 
-// Generic send email function
-export const sendEmail = async (to: string, subject: string, html: string) => {
+// Basic attachments for all emails (Generic Logo)
+const defaultAttachments = [
+    {
+        filename: 'logo.png',
+        path: 'https://cdn.pemira.oktaa.my.id/pemira-logo-text.png',
+        cid: 'logo-pemira' // same cid value as in the html img src
+    }
+];
+
+// Generic send email function with Fallback
+export const sendEmail = async (to: string, subject: string, html: string, attachments: any[] = []) => {
     try {
         const finalHtml = formatEmailHtml(html);
-
-        const info = await transporter.sendMail({
-            from: "PEMIRA " + process.env.SMTP_FROM || '"PEMIRA" <no-reply@pemira.sttnf.ac.id>',
+        const mailOptions = {
+            from: "PEMIRA " + (process.env.SMTP_FROM || '"PEMIRA" <no-reply@pemira.sttnf.ac.id>'),
             to,
             subject,
             html: finalHtml,
-        });
-        console.log('Message sent: %s', info.messageId);
-        return true;
+            attachments: [...defaultAttachments, ...attachments]
+        };
+
+        try {
+            const info = await transporter.sendMail(mailOptions);
+            console.log('Message sent (Primary): %s', info.messageId);
+            return true;
+        } catch (primaryError) {
+            console.error('⚠️ Primary SMTP failed:', primaryError);
+
+            if (backupTransporter) {
+                console.log('🔄 Attempting Backup SMTP...');
+                const info = await backupTransporter.sendMail(mailOptions);
+                console.log('Message sent (Backup): %s', info.messageId);
+                return true;
+            } else {
+                throw primaryError; // Re-throw if no backup
+            }
+        }
     } catch (error) {
-        console.error('Error sending email:', error);
+        console.error('❌ Error sending email (All transporters failed):', error);
         return false;
     }
 };
 
-export const sendOtpEmail = async (email: string, otp: string, name?: string) => {
-    const html = `
+// Standard Email Template Wrapper
+export const wrapEmailBody = (content: string, useCid = true) => {
+    const logoSrc = useCid
+        ? 'cid:logo-pemira'
+        : 'https://cdn.pemira.oktaa.my.id/pemira-logo-text.png';
+
+    return `
         <!DOCTYPE html>
         <html>
         <head>
             <meta charset="utf-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
         </head>
-        <body style="margin: 0; padding: 0; background-color: #f6f9fc; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
+        <body style="margin: 0; padding: 0; background-color: #f6f9fc; color: #000000; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
             <table border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #f6f9fc;">
                 <tr>
                     <td align="center" style="padding: 40px 0;">
@@ -78,8 +125,7 @@ export const sendOtpEmail = async (email: string, otp: string, name?: string) =>
                             <tr>
                                 <td style="background: linear-gradient(135deg, #0248a3 0%, #00337d 100%); padding: 40px 20px; text-align: center;">
                                     <div style="display: inline-block; background-color: white; padding: 12px; border-radius: 12px; margin-bottom: 16px;">
-                                        <!-- Using placeholder if no public URL available yet. Ideally this is a hosted image -->
-                                        <img src="/pemira-logo-text.svg" alt="PEMIRA Logo" style="width: 48px; height: 48px; object-fit: contain; display: block;" onerror="this.style.display='none'">
+                                        <img src="${logoSrc}" alt="PEMIRA Logo" style="width: auto; height: 48px; object-fit: contain; display: block;" onerror="this.src='https://placehold.co/200x50/png?text=PEMIRA'">
                                     </div>
                                     <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 700; letter-spacing: 0.5px;">PEMIRA STTNF</h1>
                                 </td>
@@ -87,22 +133,8 @@ export const sendOtpEmail = async (email: string, otp: string, name?: string) =>
 
                             <!-- Content -->
                             <tr>
-                                <td style="padding: 40px 32px; text-align: left;">
-                                    <p style="color: #334155; font-size: 16px; margin-bottom: 24px; line-height: 1.5;">
-                                        Halo, <strong>${name || 'Mahasiswa'}</strong>
-                                    </p>
-                                    <p style="color: #64748b; font-size: 15px; margin-bottom: 32px; line-height: 1.6;">
-                                        Kami menerima permintaan untuk masuk ke halaman pemilihan. Gunakan kode OTP di bawah ini untuk melanjutkan:
-                                    </p>
-                                    
-                                    <div style="background-color: #f1f5f9; border-radius: 12px; padding: 24px; text-align: center; margin-bottom: 32px; border: 1px dashed #cbd5e1;">
-                                        <span style="font-family: 'Courier New', monospace; font-size: 32px; font-weight: 700; color: #0f172a; letter-spacing: 8px; display: block;">${otp}</span>
-                                    </div>
-
-                                    <p style="color: #64748b; font-size: 14px; margin-bottom: 0; line-height: 1.6;">
-                                        Kode ini akan kedaluwarsa dalam <strong>5 menit</strong>.<br>
-                                        Jika ini bukan Anda, mohon abaikan email ini.
-                                    </p>
+                                <td style="padding: 40px 32px; text-align: left; color: #000000;">
+                                    ${content}
                                 </td>
                             </tr>
 
@@ -110,13 +142,8 @@ export const sendOtpEmail = async (email: string, otp: string, name?: string) =>
                             <tr>
                                 <td style="background-color: #f8fafc; padding: 24px 32px; border-top: 1px solid #e2e8f0;">
                                     <p style="color: #94a3b8; font-size: 13px; margin: 0 0 12px; line-height: 1.5; text-align: center;">
-                                        Butuh bantuan? Hubungi kami:
+                                        Butuh bantuan? Chat support di <a href="${process.env.FRONTEND_URL || 'https://pemira.nurulfikri.ac.id'}" style="color: #0284c7; text-decoration: none; font-weight: 600;">Website PEMIRA</a>
                                     </p>
-                                    <div style="text-align: center;">
-                                        <a href="https://wa.me/6285156636423" style="display: inline-block; color: #0284c7; text-decoration: none; font-size: 13px; font-weight: 600; margin: 0 8px;">
-                                            📞 +62 851-5663-6423 (Humas)
-                                        </a>
-                                    </div>
                                     <p style="color: #94a3b8; font-size: 12px; margin: 24px 0 0; text-align: center;">
                                         &copy; ${new Date().getFullYear()} Panitia PEMIRA IM STTNF. All rights reserved.
                                     </p>
@@ -129,6 +156,27 @@ export const sendOtpEmail = async (email: string, otp: string, name?: string) =>
         </body>
         </html>
     `;
+};
 
+export const sendOtpEmail = async (email: string, otp: string, name?: string) => {
+    const content = `
+        <p style="color: #334155; font-size: 16px; margin-bottom: 24px; line-height: 1.5;">
+            Halo, <strong>${name || 'Mahasiswa'}</strong>
+        </p>
+        <p style="color: #64748b; font-size: 15px; margin-bottom: 32px; line-height: 1.6;">
+            Kami menerima permintaan untuk masuk ke halaman pemilihan. Gunakan kode OTP di bawah ini untuk melanjutkan:
+        </p>
+        
+        <div style="background-color: #f1f5f9; border-radius: 12px; padding: 24px; text-align: center; margin-bottom: 32px; border: 1px dashed #cbd5e1;">
+            <span style="font-family: 'Courier New', monospace; font-size: 32px; font-weight: 700; color: #0f172a; letter-spacing: 8px; display: block;">${otp}</span>
+        </div>
+
+        <p style="color: #64748b; font-size: 14px; margin-bottom: 0; line-height: 1.6;">
+            Kode ini akan kedaluwarsa dalam <strong>5 menit</strong>.<br>
+            Jika ini bukan Anda, mohon abaikan email ini.
+        </p>
+    `;
+
+    const html = wrapEmailBody(content);
     return sendEmail(email, '[PEMIRA] Kode OTP Masuk', html);
 };

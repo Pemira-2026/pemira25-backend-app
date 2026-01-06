@@ -1,11 +1,11 @@
 import { Router } from 'express';
 import { db } from '../config/db';
-import { users } from '../db/schema';
-import { eq, inArray, and, isNull } from 'drizzle-orm';
+import { users, broadcasts } from '../db/schema';
+import { eq, inArray, and, isNull, desc } from 'drizzle-orm';
 import { authenticateAdmin } from '../middleware/adminAuth';
 import { addBroadcastJob } from '../queue/emailQueue';
 import { logAction } from '../utils/actionLogger';
-import { formatEmailHtml } from '../config/mail';
+import { formatEmailHtml, wrapEmailBody } from '../config/mail';
 
 const router = Router();
 
@@ -73,7 +73,9 @@ router.post('/preview', async (req, res) => {
           });
 
           // Apply same formatting as email sender
-          preview = formatEmailHtml(preview);
+          // Apply same formatting as email sender
+          // Use CID=false for preview so browser can load image from URL
+          preview = wrapEmailBody(preview, false);
 
           res.json({ html: preview });
      } catch (error) {
@@ -113,63 +115,189 @@ router.post('/preview', async (req, res) => {
  *       200:
  *         description: Broadcast accepted
  */
-router.post('/send', async (req, res) => {
-     const { subject, template, target = 'all', nims } = req.body;
-
-     if (!subject || !template) {
-          return res.status(400).json({ message: 'Subject and Template are required' });
-     }
-
+// --- HELPER: Get District Batches ---
+router.get('/batches', async (req, res) => {
      try {
-          let targets = [];
+          const result = await db.selectDistinct({ batch: users.batch }).from(users).where(and(eq(users.role, 'voter'), isNull(users.deletedAt))).orderBy(users.batch);
+          const batches = result.map(r => r.batch).filter(b => b !== null);
+          res.json(batches);
+     } catch (error) {
+          console.error('Fetch batches error:', error);
+          res.status(500).json({ message: 'Failed to fetch batches' });
+     }
+});
 
-          // Fetch targets based on selection
-          const baseQuery = db.select().from(users).where(eq(users.role, 'voter'));
+// --- LIST BROADCASTS ---
+router.get('/', async (req, res) => {
+     try {
+          // TODO: Add pagination if needed
+          const result = await db.select().from(broadcasts).orderBy(desc(broadcasts.createdAt));
+          res.json(result);
+     } catch (error) {
+          console.error('List broadcasts error:', error);
+          res.status(500).json({ message: 'Failed to fetch broadcasts' });
+     }
+});
 
-          if (target === 'selection' && Array.isArray(nims) && nims.length > 0) {
-               targets = await db.select().from(users).where(
-                    and(
-                         eq(users.role, 'voter'),
-                         inArray(users.nim, nims)
-                    )
-               );
-          } else {
-               // Target ALL active voters (not deleted)
-               targets = await baseQuery;
-               targets = targets.filter(u => u.deletedAt === null);
+// --- GET BROADCAST DETAIL ---
+router.get('/:id', async (req, res) => {
+     try {
+          const result = await db.select().from(broadcasts).where(eq(broadcasts.id, req.params.id));
+          if (result.length === 0) return res.status(404).json({ message: 'Broadcast not found' });
+          res.json(result[0]);
+     } catch (error) {
+          console.error('Get broadcast error:', error);
+          res.status(500).json({ message: 'Failed to fetch broadcast' });
+     }
+});
+
+// --- CREATE DRAFT ---
+router.post('/draft', async (req, res) => {
+     const { subject, template, filters } = req.body;
+     try {
+          const result = await db.insert(broadcasts).values({
+               subject: subject || 'Untitled Draft',
+               content: template || '',
+               filters: filters || { target: 'all' },
+               status: 'draft',
+               createdBy: (req as any).user?.id // Assuming adminAuth populates req.user
+          }).returning();
+          res.json(result[0]);
+     } catch (error) {
+          console.error('Create draft error:', error);
+          res.status(500).json({ message: 'Failed to create draft' });
+     }
+});
+
+// --- UPDATE DRAFT ---
+router.put('/:id', async (req, res) => {
+     const { subject, template, filters } = req.body;
+     try {
+          const [existing] = await db.select().from(broadcasts).where(eq(broadcasts.id, req.params.id));
+          if (!existing) return res.status(404).json({ message: 'Broadcast not found' });
+
+          if (existing.status !== 'draft') {
+               return res.status(400).json({ message: 'Only drafts can be edited' });
           }
 
-          // Filter those with valid emails
+          const result = await db.update(broadcasts).set({
+               subject,
+               content: template,
+               filters,
+               updatedAt: new Date(),
+          }).where(eq(broadcasts.id, req.params.id)).returning();
+
+          res.json(result[0]);
+     } catch (error) {
+          console.error('Update draft error:', error);
+          res.status(500).json({ message: 'Failed to update draft' });
+     }
+});
+
+// --- DELETE BROADCAST ---
+router.delete('/:id', async (req, res) => {
+     try {
+          await db.delete(broadcasts).where(eq(broadcasts.id, req.params.id));
+          res.json({ message: 'Broadcast deleted' });
+     } catch (error) {
+          console.error('Delete broadcast error:', error);
+          res.status(500).json({ message: 'Failed to delete broadcast' });
+     }
+});
+
+// --- PUBLISH / SEND BROADCAST ---
+router.post('/:id/publish', async (req, res) => {
+     try {
+          const [broadcast] = await db.select().from(broadcasts).where(eq(broadcasts.id, req.params.id));
+          if (!broadcast) return res.status(404).json({ message: 'Broadcast not found' });
+
+          if (broadcast.status === 'processing' || broadcast.status === 'completed') {
+               return res.status(400).json({ message: 'Broadcast already sent or processing' });
+          }
+
+          const { subject, content, filters } = broadcast;
+          const filterData = filters as { target: string; batches?: string[] } || { target: 'all' };
+
+          // Determine Targets
+          let query = db.select().from(users).where(and(eq(users.role, 'voter'), isNull(users.deletedAt)));
+
+          let targets = await query;
+          // Filter Deleted - Handled in SQL now
+          // targets = targets.filter(u => u.deletedAt === null);
+
+          // Filter by Batch
+          if (filterData.target === 'batch' && filterData.batches && filterData.batches.length > 0) {
+               targets = targets.filter(u => filterData.batches!.includes(u.batch || ''));
+          }
+
+          // Filter by Unvoted
+          if (filterData.target === 'unvoted') {
+               targets = targets.filter(u => !u.hasVoted);
+          }
+
+          // Validation
           const validTargets = targets.filter(u => u.email && u.email.includes('@'));
 
           if (validTargets.length === 0) {
-               return res.status(400).json({ message: 'No valid recipients found based on criteria.' });
+               return res.status(400).json({ message: 'No valid recipients found for this criteria.' });
           }
 
-          // Queue jobs
+          // Queue Jobs
           let queuedCount = 0;
           for (const user of validTargets) {
                if (!user.email) continue;
-
-               await addBroadcastJob(user.email as string, subject, template, {
+               await addBroadcastJob(user.email, subject, content, {
                     name: user.name || 'Mahasiswa',
                     nim: user.nim,
-                    email: user.email || ''
+                    email: user.email
                });
                queuedCount++;
           }
 
-          await logAction(req, 'SEND_BROADCAST', `Subject: ${subject}, Targets: ${queuedCount}`);
+          // Update Status
+          await db.update(broadcasts).set({
+               status: 'completed', // Or 'processing' if we want detailed tracking later
+               stats: { total: validTargets.length, sent: queuedCount, failed: 0 },
+               updatedAt: new Date()
+          }).where(eq(broadcasts.id, req.params.id));
+
+          await logAction(req, 'PUBLISH_BROADCAST', `ID: ${broadcast.id}, Targets: ${queuedCount}`);
 
           res.json({
-               message: 'Broadcast processing started',
-               recipientCount: queuedCount,
-               skippedCount: targets.length - queuedCount
+               message: 'Broadcast published successfully',
+               recipientCount: queuedCount
           });
 
      } catch (error) {
-          console.error('Broadcast error:', error);
-          res.status(500).json({ message: 'Failed to process broadcast' });
+          console.error('Publish broadcast error:', error);
+          res.status(500).json({ message: 'Failed to publish broadcast' });
+     }
+});
+
+// --- TEST SEND (To Admin) ---
+router.post('/test-send', async (req, res) => {
+     const { subject, template, email } = req.body;
+     if (!email || !subject || !template) return res.status(400).json({ message: 'Missing required fields' });
+
+     try {
+          // Use wrapEmailBody via helper if needed, but worker handles it. 
+          // Actually worker handles it if we use addBroadcastJob. 
+          // For direct test without queue: use sendEmail directly + wrapEmailBody.
+
+          const html = wrapEmailBody(template.replace('{{name}}', 'Admin (Test)').replace('{{nim}}', '00000').replace('{{email}}', email));
+
+          // We can use the helper sendEmail directly here to be instantaneous
+          // Import sendEmail from config/mail first
+          const { sendEmail } = await import('../config/mail'); // Dynamic import or top level
+
+          const success = await sendEmail(email, `[TEST] ${subject}`, html);
+
+          if (success) res.json({ message: 'Test email sent' });
+          else res.status(500).json({ message: 'Failed to send test email' });
+
+     } catch (error) {
+          console.error('Test send error:', error);
+          res.status(500).json({ message: 'Failed to send test email' });
      }
 });
 

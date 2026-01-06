@@ -1,7 +1,7 @@
 import { Response } from 'express';
 import { db } from '../config/db';
 import { votes, users, candidates } from '../db/schema';
-import { eq, sql, and } from 'drizzle-orm';
+import { eq, sql, and, isNull } from 'drizzle-orm';
 import { AuthRequest } from '../middleware/authMiddleware';
 import { Request } from 'express';
 
@@ -63,7 +63,7 @@ export const getStats = async (req: Request, res: Response) => {
           const cached = cache.get("stats");
           if (cached) return res.json(cached);
 
-          const userCount = await db.select({ count: sql<number>`count(*)` }).from(users);
+          const userCount = await db.select({ count: sql<number>`count(*)` }).from(users).where(isNull(users.deletedAt));
           const voteCount = await db.select({ count: sql<number>`count(*)` }).from(votes);
 
           const onlineCount = await db.select({ count: sql<number>`count(*)` }).from(votes).where(eq(votes.source, 'online'));

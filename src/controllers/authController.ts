@@ -3,7 +3,7 @@ import { Request, Response } from 'express';
 import jwt from 'jsonwebtoken';
 import { db } from '../config/db';
 import { users, otpCodes } from '../db/schema';
-import { eq, gt, and, or } from 'drizzle-orm';
+import { eq, gt, and, or, isNull } from 'drizzle-orm';
 import { sendOtpEmail } from '../config/mail';
 import { addOtpEmailJob } from '../queue/emailQueue';
 import { checkRateLimit } from '../utils/rateLimiter';
@@ -21,7 +21,7 @@ export const adminLogin = async (req: Request, res: Response) => {
      }
 
      try {
-          const userRes = await db.select().from(users).where(eq(users.email, email));
+          const userRes = await db.select().from(users).where(and(eq(users.email, email), isNull(users.deletedAt)));
           const user = userRes[0];
 
           // Check if user exists and is authorized (not a voter)
@@ -101,8 +101,8 @@ export const requestOtp = async (req: Request, res: Response) => {
      const { email } = validation.data;
 
      try {
-          // Check if user exists with this email
-          const userResult = await db.select().from(users).where(eq(users.email, email));
+          // Check if user exists with this email AND is not deleted
+          const userResult = await db.select().from(users).where(and(eq(users.email, email), isNull(users.deletedAt)));
           const user = userResult[0];
 
           if (!user) {
@@ -189,8 +189,8 @@ export const verifyOtp = async (req: Request, res: Response) => {
           // Invalidate OTP (delete it)
           await db.delete(otpCodes).where(eq(otpCodes.email, email));
 
-          // Get User - we know they exist from requestOtp, but let's be safe
-          const userResult = await db.select().from(users).where(eq(users.email, email));
+          // Get User - check soft delete
+          const userResult = await db.select().from(users).where(and(eq(users.email, email), isNull(users.deletedAt)));
           const user = userResult[0];
 
           if (!user) {
@@ -260,7 +260,10 @@ export const manualOtpRequest = async (req: Request, res: Response) => {
      try {
           // Find user by Email OR NIM
           const userRes = await db.select().from(users).where(
-               or(eq(users.email, identifier), eq(users.nim, identifier))
+               and(
+                    or(eq(users.email, identifier), eq(users.nim, identifier)),
+                    isNull(users.deletedAt)
+               )
           );
 
           if (userRes.length === 0) {
