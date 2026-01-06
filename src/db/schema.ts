@@ -9,6 +9,7 @@ export const users = pgTable('users', {
      name: text('name'),
      password: text('password'),
      role: text('role').notNull().default('voter'), // 'super_admin', 'panitia', 'voter'
+     batch: text('batch'), // Angkatan
      hasVoted: boolean('has_voted').default(false),
      votedAt: timestamp('voted_at', { withTimezone: true }),
      createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),

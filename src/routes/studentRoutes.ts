@@ -7,6 +7,14 @@ import { upload } from '../middleware/upload';
 import * as XLSX from 'xlsx';
 import { logAction } from '../utils/actionLogger';
 
+// Helper: Title Case
+function toTitleCase(str: string) {
+     return str.replace(
+          /\w\S*/g,
+          text => text.charAt(0).toUpperCase() + text.substring(1).toLowerCase()
+     );
+}
+
 const router = Router();
 
 /**
@@ -64,39 +72,81 @@ router.post('/import', upload.single('file'), async (req, res) => {
           let successCount = 0;
           let errorCount = 0;
 
+
+
+
           // Process the data (Filtering & Insertion)
           for (const row of data) {
                // Normalize keys (handle formatting issues)
-               const nim = row['NIM'] || row['nim'] || row['Nim'];
-               const name = row['Name'] || row['name'] || row['Nama'] || row['nama']; // Added 'Nama' support
-               const email = row['Email'] || row['email'];
+               const rawNim = row['NIM'] || row['nim'] || row['Nim'];
+               const rawName = row['Name'] || row['name'] || row['Nama'] || row['nama']; // Added 'Nama' support
+               const rawEmail = row['Email'] || row['email'];
+               const rawBatch = row['Batch'] || row['batch'] || row['Angkatan'] || row['angkatan'];
 
                // Filter: Skip invalid rows
-               if (!nim || !name) {
+               if (!rawNim || !rawName) {
                     errorCount++;
                     continue;
                }
 
-               const normalizedNim = String(nim).trim();
-               const normalizedName = String(name).trim();
+               const normalizedNim = String(rawNim).trim();
+               const normalizedName = toTitleCase(String(rawName).trim());
+               const normalizedBatch = rawBatch ? String(rawBatch).trim() : null;
+               const normalizedEmail = rawEmail ? String(rawEmail).trim().toLowerCase() : null;
 
                try {
-                    const existing = await db.select().from(users).where(eq(users.nim, normalizedNim));
+                    // Strategy 1: Find by NIM (Primary)
+                    const existingByNim = await db.select().from(users).where(eq(users.nim, normalizedNim));
 
-                    if (existing.length > 0) {
+                    if (existingByNim.length > 0) {
+                         // FOUND by NIM -> Update details
                          await db.update(users).set({
                               name: normalizedName,
-                              email: email || existing[0].email,
+                              email: normalizedEmail || existingByNim[0].email,
+                              batch: normalizedBatch || existingByNim[0].batch,
                               deletedAt: null // Restore if re-importing a soft deleted user
                          }).where(eq(users.nim, normalizedNim));
                     } else {
-                         await db.insert(users).values({
-                              nim: normalizedNim,
-                              name: normalizedName,
-                              email: email || null,
-                              role: 'voter',
-                              hasVoted: false
-                         });
+                         // NOT FOUND by NIM -> Strategy 2: Find by Name (Secondary - for NIM updates)
+                         // Check strictly case-insensitive
+                         const existingByName = await db.select().from(users).where(ilike(users.name, normalizedName));
+
+                         let shouldCreateNew = true;
+
+                         // Logic Update NIM via Name Match
+                         if (existingByName.length === 1) {
+                              // Found EXACTLY ONE person with this name
+                              const targetUser = existingByName[0];
+
+                              // Safety Check: Is it a single word name? (e.g. "Budi")
+                              // Single word names are dangerous to assume identity.
+                              const nameParts = normalizedName.split(' ');
+                              if (nameParts.length > 1) {
+                                   // Multi-word name -> Safe to assume it's the same person updating their NIM
+                                   // ACTION: Update NIM
+                                   await db.update(users).set({
+                                        nim: normalizedNim, // NEW NIM
+                                        email: normalizedEmail || targetUser.email,
+                                        batch: normalizedBatch || targetUser.batch,
+                                        deletedAt: null
+                                   }).where(eq(users.id, targetUser.id));
+
+                                   shouldCreateNew = false; // Handled as update
+                              }
+                              // Else: Single word name -> Too ambiguous. Fallback to Create New.
+                         }
+                         // Else: Found 0 or >1 people -> Too ambiguous. Fallback to Create New.
+
+                         if (shouldCreateNew) {
+                              await db.insert(users).values({
+                                   nim: normalizedNim,
+                                   name: normalizedName,
+                                   email: normalizedEmail || null,
+                                   batch: normalizedBatch,
+                                   role: 'voter',
+                                   hasVoted: false
+                              });
+                         }
                     }
                     successCount++;
                } catch (err) {
@@ -171,6 +221,7 @@ router.post('/', async (req, res) => {
                nim: String(nim),
                name,
                email: email || null,
+               batch: req.body.batch || null, // Optional batch
                role: 'voter',
                hasVoted: false
           });
@@ -245,6 +296,79 @@ router.get('/', async (req, res) => {
      } catch (error) {
           console.error('Error fetching students:', error);
           res.status(500).json({ error: 'Internal Server Error' });
+     }
+});
+
+// Update Student (Super Admin & Panitia)
+/**
+ * @swagger
+ * /api/students/{id}:
+ *   put:
+ *     summary: Update student details
+ *     tags: [Students]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               nim:
+ *                 type: string
+ *               name:
+ *                 type: string
+ *               email:
+ *                 type: string
+ *               batch:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Student updated
+ *       404:
+ *         description: Student not found
+ */
+router.put('/:id', async (req, res) => {
+     const { id } = req.params;
+     const { nim, name, email, batch } = req.body;
+
+     try {
+          // Check if student exists
+          const existing = await db.select().from(users).where(eq(users.id, id));
+          if (existing.length === 0) {
+               return res.status(404).json({ message: 'Mahasiswa tidak ditemukan' });
+          }
+
+          // If NIM is changed, check for conflict
+          if (nim && nim !== existing[0].nim) {
+               const conflict = await db.select().from(users).where(eq(users.nim, String(nim)));
+               if (conflict.length > 0) {
+                    return res.status(400).json({ message: 'NIM sudah digunakan oleh mahasiswa lain' });
+               }
+          }
+
+          await db.update(users)
+               .set({
+                    nim: nim || existing[0].nim,
+                    name: name || existing[0].name,
+                    email: email !== undefined ? email : existing[0].email, // Allow clearing email if sent as null/empty
+                    batch: batch !== undefined ? batch : existing[0].batch
+               })
+               .where(eq(users.id, id));
+
+          res.json({ message: 'Data mahasiswa berhasil diperbarui' });
+          await logAction(req, 'UPDATE_STUDENT', `ID: ${id}, Updates: ${JSON.stringify({ nim, name, email, batch })}`);
+
+     } catch (error) {
+          console.error('Update student error:', error);
+          res.status(500).json({ message: 'Gagal memperbarui data mahasiswa' });
      }
 });
 
